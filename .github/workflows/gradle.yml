@@ -23,7 +23,7 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
     - name: Build and Publish
-      run: ./gradlew --no-configuration-cache --no-parallel publish
+      run: ./gradlew --no-configuration-cache --no-parallel publish  -Pgpr.user=${{ github.actor }} -Pgpr.key=${{ secrets.GITHUB_TOKEN }} -Pgpr.owner=${{ github.repository_owner }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         USERNAME: ${{ github.actor }}

@@ -1,4 +1,4 @@
-name: Java CI with Maven
+name: Java CI with Gradle
 
 on:
   push:
@@ -22,20 +22,9 @@ jobs:
         cache: gradle
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
-    - name: Build
-      run: ./gradlew --no-configuration-cache --no-parallel mavenCentralDeploy "-PsonatypeUsername=$SONATYPE_USERNAME" "-PsonatypePassword=$SONATYPE_PASSWORD"
+    - name: Build and Publish
+      run: ./gradlew --no-configuration-cache --no-parallel publish
       env:
-        SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-        SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-  publish-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4.6.3
-        with:
-          branch: gh-pages # The branch the action should deploy to.
-          folder: example/web
-          target-folder: /
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        USERNAME: ${{ github.actor }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -197,22 +197,16 @@ publishing.publications.withType<MavenPublication>().configureEach {
         description = "${project.description}"
     }
 }
-
-nexusPublishing {
-    this.repositories {
-        sonatype()
-    }
-}
-
-val mavenCentralDeploy by tasks.registering(DefaultTask::class) {
-    group = "publishing"
-    val isSnapshot = project.version.toString().endsWith("-SNAPSHOT")
-
-    val publishTasks = allprojects
-        .flatMap { it.tasks.withType<PublishToMavenRepository>() }
-        .filter { it.repository.name == "sonatype" }
-    dependsOn(publishTasks)
-    if (!isSnapshot) {
-        dependsOn(tasks.closeAndReleaseStagingRepositories)
+ 
+ publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/${project.findProperty("gpr.owner") ?: System.getenv("GITHUB_REPOSITORY_OWNER")}/${project.name}")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+            }
+        }
     }
 }

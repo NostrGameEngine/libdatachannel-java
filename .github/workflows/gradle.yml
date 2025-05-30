@@ -1,4 +1,4 @@
-name: Java CI with Maven
+name: Java CI with Gradle
 
 on:
   push:
@@ -28,21 +28,7 @@ jobs:
         task=(assemble)
         if [[ "$GITHUB_REF" =~ refs/tags/v* ]] || [ "$GITHUB_REF" = 'refs/heads/main' ]
         then
-          task=(mavenCentralDeploy "-PsonatypeUsername=$SONATYPE_USERNAME" "-PsonatypePassword=$SONATYPE_PASSWORD")
+          task=(publish "-PsonatypeUsername=$SONATYPE_USERNAME" "-PsonatypePassword=$SONATYPE_PASSWORD")
         fi
-        ./gradlew --no-configuration-cache --no-parallel "${task[@]}"
-      env:
-        SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-        SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-  publish-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4.7.3
-        with:
-          branch: gh-pages # The branch the action should deploy to.
-          folder: example/web
-          target-folder: /
+        ./gradlew --no-configuration-cache --no-parallel  -Pgpr.user=${{ github.actor }} -Pgpr.key=${{ secrets.GITHUB_TOKEN }} -Pgpr.owner=${{ github.repository_owner }} "${task[@]}"
+      

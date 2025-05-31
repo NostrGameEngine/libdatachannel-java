@@ -6,6 +6,8 @@ on:
     tags: [ '*' ]
   pull_request:
     branches: [ main ]
+  release:
+    types: [ published ]
   workflow_dispatch:
 
 jobs:
@@ -24,11 +26,15 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
     - name: Build
+      if: github.event_name != 'push' && github.event_name != 'release'
       run: |
-        task=(assemble)
-        if [[ "$GITHUB_REF" =~ refs/tags/v* ]] || [ "$GITHUB_REF" = 'refs/heads/main' ]
-        then
-          task=(publish "-PsonatypeUsername=$SONATYPE_USERNAME" "-PsonatypePassword=$SONATYPE_PASSWORD")
+        ./gradlew --no-configuration-cache --no-parallel  assemble
+    - name: Publish
+      if: github.event_name == 'push' ||  github.event_name == 'release'
+      run: |
+        export VERSION=""
+        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            export VERSION="-Pversion=${GITHUB_REF#refs/tags/}"
         fi
-        ./gradlew --no-configuration-cache --no-parallel  -Pgpr.user=${{ github.actor }} -Pgpr.key=${{ secrets.GITHUB_TOKEN }} -Pgpr.owner=${{ github.repository_owner }} "${task[@]}"
+        ./gradlew  --no-configuration-cache --no-parallel $VERSION -Pgpr.user=${{ github.actor }} -Pgpr.key=${{ secrets.GITHUB_TOKEN }} -Pgpr.owner=${{ github.repository_owner }} publish
       

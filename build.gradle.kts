@@ -22,6 +22,11 @@ fun extractLibDataChannelVersion(): String {
 }
 
 fun produceVersion(): String {
+    var providedVersion = project.findProperty("version")?.toString()
+    if (providedVersion != null && providedVersion.isNotEmpty() && providedVersion != "unspecified") {
+        return providedVersion
+    }
+
     val libDataChannelVersion = extractLibDataChannelVersion()
     val hasTags = project.providers.exec {
         commandLine("git", "tag")
@@ -131,10 +136,10 @@ fun Jar.baseConfigure(compileTask: TaskProvider<DockcrossRunTask>, buildOutputDi
     dependsOn(compileTask)
 
     from(buildOutputDir) {
-        include("native/libdatachannel-java.so")
-        include("native/libdatachannel-java.dll")
+            include("native/libdatachannel-java.so")
+            include("native/libdatachannel-java.dll")
+        }
     }
-}
 
 val dockcrossOutputDir: Directory = project.layout.buildDirectory.get().dir("dockcross")
 val nativeForHostOutputDir: Directory = dockcrossOutputDir.dir("host")
@@ -172,11 +177,6 @@ val targets = listOf(
         classifier = "android-arm64-v8a",
         args = listOf("-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-21"),
     ),
-    // BuildTarget(
-    //     image = "android-x86", 
-    //     classifier = "android-x86",
-    //     args = listOf("-DANDROID_ABI=x86", "-DANDROID_PLATFORM=android-21"),
-    // ),
     BuildTarget(
         image = "android-x86_64", 
         classifier = "android-x86_64",
@@ -232,14 +232,22 @@ publishing.publications.withType<MavenPublication>().configureEach {
     }
 }
  
-publishing {
-    repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/${project.findProperty("gpr.owner") as? String ?: System.getenv("GITHUB_REPOSITORY_OWNER")}/${project.name}")
-            credentials {
-                username = project.findProperty("gpr.user") as? String ?: System.getenv("USERNAME")
-                password = project.findProperty("gpr.key") as? String ?: System.getenv("TOKEN")
+allprojects {
+    apply(plugin = "maven-publish")
+    publishing {
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/${project.findProperty("gpr.owner") as? String ?: System.getenv("GITHUB_REPOSITORY_OWNER")}/libdatachannel-java")
+                credentials {
+                    username = project.findProperty("gpr.user") as? String ?: System.getenv("USERNAME")
+                    password = project.findProperty("gpr.key") as? String ?: System.getenv("TOKEN")
+                }
+            }
+            mavenLocal()
+            maven {
+                name = "distFolder"
+                url = uri("file://${project.rootDir}/dist")
             }
         }
     }

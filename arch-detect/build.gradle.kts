@@ -32,55 +32,55 @@ tasks.jar.configure {
     }
 }
 
-val androidAar by tasks.registering(Zip::class) {
-    group = "build"
-    archiveBaseName.set(project.name+"-android")
-    archiveExtension.set("aar")
-    destinationDirectory.set(layout.buildDirectory.dir("outputs/aar"))
-    val manifestFile = layout.buildDirectory.file("tmp/androidAar/AndroidManifest.xml")    
-    doFirst {
-        val mf = manifestFile.get().asFile
-        mf.parentFile.mkdirs()
-        mf.writeText(
-            """
-            <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-                package="${project.group}.libdatachannel.archdetect">
-            </manifest>
-            """.trimIndent()
-        )
-    }    
-    from(manifestFile) {
-        into("") 
-    }
-    dependsOn(nativeLibs, tasks.jar)
-}
+// val androidAar by tasks.registering(Zip::class) {
+//     group = "build"
+//     archiveBaseName.set(project.name+"-android")
+//     archiveExtension.set("aar")
+//     destinationDirectory.set(layout.buildDirectory.dir("outputs/aar"))
+//     val manifestFile = layout.buildDirectory.file("tmp/androidAar/AndroidManifest.xml")    
+//     doFirst {
+//         val mf = manifestFile.get().asFile
+//         mf.parentFile.mkdirs()
+//         mf.writeText(
+//             """
+//             <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+//                 package="${project.group}.libdatachannel.archdetect">
+//             </manifest>
+//             """.trimIndent()
+//         )
+//     }    
+//     from(manifestFile) {
+//         into("") 
+//     }
+//     dependsOn(nativeLibs, tasks.jar)
+// }
 
-androidAar.configure {
-    nativeLibs.get().resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
-        val classifier = artifact.classifier ?: return@forEach        
-        if (classifier.startsWith("android-")) {
-            var abi = classifier.removePrefix("android-")            
-            from(zipTree(artifact.file)) {
-                include("native/*.so")
-                includeEmptyDirs = false            
-                eachFile {
-                    val p = path
-                    val newPath = RelativePath(true, "jni", abi, p.removePrefix("native/"))
-                    relativePath = newPath
-                }
-            }
-        }
-    }
-}
+// androidAar.configure {
+//     nativeLibs.get().resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
+//         val classifier = artifact.classifier ?: return@forEach        
+//         if (classifier.startsWith("android-")) {
+//             var abi = classifier.removePrefix("android-")            
+//             from(zipTree(artifact.file)) {
+//                 include("native/*.so")
+//                 includeEmptyDirs = false            
+//                 eachFile {
+//                     val p = path
+//                     val newPath = RelativePath(true, "jni", abi, p.removePrefix("native/"))
+//                     relativePath = newPath
+//                 }
+//             }
+//         }
+//     }
+// }
 
-tasks.jar {
-    finalizedBy(androidAar)
-}
+// tasks.jar {
+//     finalizedBy(androidAar)
+// }
 
 publishing.publications.withType<MavenPublication>().configureEach {
-    artifact(androidAar) {
-        classifier = "android"
-    }
+    // artifact(androidAar) {
+    //     classifier = "android"
+    // }
     pom {
         description = "${rootProject.description} The ${project.name} module bundles all architectures and allows runtime architecture detection."
     }

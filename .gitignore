@@ -10,3 +10,4 @@ out/
 *.log
 ndk
 dist
+bin

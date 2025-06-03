@@ -16,22 +16,38 @@ dependencies {
         "configuration" to "archDetectConfiguration"
     )))
 }
-
 tasks.jar.configure {
     dependsOn(nativeLibs)
-    for (artifact in nativeLibs.get().resolvedConfiguration.resolvedArtifacts) {
-        val classifier = artifact.classifier ?: continue
-        if (!classifier.startsWith("android-")) {
-            val classifier = artifact.classifier ?: continue
-            from(zipTree(artifact.file)) {
-                include("native/*.so")
-                include("native/*.dll")
-                into(classifier)
-            }
+    val allArtifacts = mutableListOf<Pair<File, String>>()
+    
+    // Add resolved artifacts
+    nativeLibs.get().resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
+        val classifier = artifact.classifier
+        if (classifier != null && !classifier.startsWith("android-")) {
+            allArtifacts.add(Pair(artifact.file, classifier))
         }
     }
+    
+    // Add prebuilt libraries
+    val prebuiltArtifacts = rootProject.extra["prebuiltArtifacts"] as? List<Pair<File, String>> ?: emptyList()
+    prebuiltArtifacts.forEach { (file, classifier) ->
+        if (!classifier.startsWith("android-")) {
+            allArtifacts.add(file to classifier)
+            logger.lifecycle("Found prebuilt library: ${file.name} with classifier: $classifier")
+        }
+    }
+    
+    // Process all artifacts
+    allArtifacts.forEach { (file, classifier) ->
+        from(zipTree(file)) {
+            include("native/*.so")
+            include("native/*.dll")
+            include("native/*.dylib")
+            into(classifier)
+        }
+        logger.lifecycle("Added library to arch-detect JAR: ${file.name} with classifier: $classifier")
+    }
 }
-
 // val androidAar by tasks.registering(Zip::class) {
 //     group = "build"
 //     archiveBaseName.set(project.name+"-android")

@@ -63,6 +63,15 @@ fun produceVersion(): String {
 
 version = produceVersion()
 val isSnapshot = version.toString().endsWith("-SNAPSHOT")
+
+// Allow overriding the Maven group via env var.
+// If set and non-empty, this will replace the default group 
+val libdatachannelGroupOverride = System.getenv("LIBDATACHANNEL_JAVA_GROUP_OVERRIDE")
+    ?.takeIf { it.isNotBlank() }
+if (libdatachannelGroupOverride != null) {
+    group = libdatachannelGroupOverride
+}
+
 description = "${project.name} is a binding to the libdatachannel that feels native to Java developers."
 
 val currentVersion by tasks.registering(DefaultTask::class) {

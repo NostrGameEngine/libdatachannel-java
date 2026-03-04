@@ -38,10 +38,17 @@ fun produceVersion(): String {
     if (!hasTags) {
         return defaultVersion
     }
-    val describeOutput = project.providers.exec {
-        commandLine("git", "describe", "--tags")
-    }.standardOutput.asText.get().trim().removePrefix("v")
+    val describeOutput = try {
+        project.providers.exec {
+            commandLine("git", "describe", "--tags")
+        }.standardOutput.asText.get().trim().removePrefix("v")
+    } catch (e: Exception) {
+        ""
+    }
 
+    if (describeOutput.isEmpty()) {
+        return defaultVersion
+    }
     val parts = describeOutput.split("-", limit = 2)
     val tagVersion = parts[0]
     return if (parts.size > 1) {

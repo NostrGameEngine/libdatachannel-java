@@ -4,7 +4,13 @@ plugins {
     `maven-publish`
 }
 
-group = "tel.schich"
+val libdatachannelGroupOverride = (
+    findProperty("libdatachannel.group-override") as String?
+        ?: System.getenv("LIBDATACHANNEL_JAVA_GROUP_OVERRIDE")
+    )
+    ?.takeIf { it.isNotBlank() }
+
+group = libdatachannelGroupOverride ?: "tel.schich"
 
 java {
     withSourcesJar()
@@ -62,6 +68,9 @@ publishing {
 
     publications {
         register<MavenPublication>("maven") {
+            if (libdatachannelGroupOverride != null) {
+                groupId = libdatachannelGroupOverride
+            }
             artifactId = project.name
             from(components["java"])
 

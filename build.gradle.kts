@@ -71,12 +71,17 @@ fun produceVersion(): String {
 version = produceVersion()
 val isSnapshot = version.toString().endsWith("-SNAPSHOT")
 
-// Allow overriding the Maven group via env var.
-// If set and non-empty, this will replace the default group 
-val libdatachannelGroupOverride = System.getenv("LIBDATACHANNEL_JAVA_GROUP_OVERRIDE")
+// Allow overriding Maven group via env var or Gradle property.
+// If set and non-empty, this value is forced for project + all publications.
+val libdatachannelGroupOverride = (
+    project.findProperty("libdatachannel.group-override") as String?
+        ?: System.getenv("LIBDATACHANNEL_JAVA_GROUP_OVERRIDE")
+    )
     ?.takeIf { it.isNotBlank() }
 if (libdatachannelGroupOverride != null) {
-    group = libdatachannelGroupOverride
+    allprojects {
+        group = libdatachannelGroupOverride
+    }
 }
 
 description = "${project.name} is a binding to the libdatachannel that feels native to Java developers."
@@ -369,6 +374,9 @@ dependencies {
 }
 
 publishing.publications.withType<MavenPublication>().configureEach {
+    if (libdatachannelGroupOverride != null) {
+        groupId = libdatachannelGroupOverride
+    }
     pom {
         description = "${project.description}"
     }

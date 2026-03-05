@@ -28,13 +28,8 @@ tasks.test {
     useJUnitPlatform()
 }
 
-tasks.compileJava {
-    javaCompiler = javaToolchains.compilerFor {
-        languageVersion = JavaLanguageVersion.of(11)
-    }
-}
-
 tasks.withType<JavaCompile>().configureEach {
+    options.release.set(11)
     options.compilerArgs.addAll(
         listOf(
             "-Xlint:deprecation",

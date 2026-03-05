@@ -4,6 +4,15 @@ plugins {
 
 version = rootProject.version
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(11)
+}
+
 val nativeLibs by configurations.registering
 
 dependencies {

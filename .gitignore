@@ -9,3 +9,5 @@ out/
 *.log
 *-bundle.zip
 conventions/bin
+bin/
+.kotlin/

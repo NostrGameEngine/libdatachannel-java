@@ -102,8 +102,13 @@ publishing {
     }
 }
 
-private val signingKey = System.getenv("SIGNING_KEY")?.ifBlank { null }?.trim()
-private val signingKeyPassword = System.getenv("SIGNING_KEY_PASSWORD")?.ifBlank { null }?.trim() ?: ""
+private fun readSigningEnv(vararg names: String): String? = names
+    .asSequence()
+    .mapNotNull { name -> System.getenv(name)?.ifBlank { null }?.trim() }
+    .firstOrNull()
+
+private val signingKey = readSigningEnv("SIGNING_KEY", "GPG_PRIVATE_KEY")
+private val signingKeyPassword = readSigningEnv("SIGNING_KEY_PASSWORD", "GPG_PASSPHRASE") ?: ""
 
 when {
     signingKey != null -> {

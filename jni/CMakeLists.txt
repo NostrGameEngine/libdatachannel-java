@@ -7,6 +7,21 @@ set(CMAKE_CXX_STANDARD 11)
 option(PROJECT_VERSION "The version of the project" "unspecified")
 option(ENABLE_HARDENING "Enable compiler/linker hardening flags" ON)
 
+# Add mimalloc with MI_SECURE for non-Android targets
+if(NOT ANDROID)
+    include(FetchContent)
+    FetchContent_Declare(
+        mimalloc
+        GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
+        GIT_TAG v2.1.7
+        GIT_SHALLOW TRUE
+    )
+    set(MI_SECURE ON CACHE BOOL "Enable mimalloc security features" FORCE)
+    set(MI_BUILD_SHARED OFF CACHE BOOL "Build mimalloc as static library" FORCE)
+    set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
+    FetchContent_MakeAvailable(mimalloc)
+endif()
+
 set(NO_WEBSOCKET ON CACHE BOOL "configure libdatachannel build")
 set(NO_MEDIA ON CACHE BOOL "configure libdatachannel build")
 set(NO_TESTS ON CACHE BOOL "configure libdatachannel build")
@@ -81,3 +96,11 @@ add_library(datachannel-java SHARED
         src/native_track.c
         src/callback.c)
 target_link_libraries(datachannel-java PRIVATE datachannel-static)
+if(NOT ANDROID)
+    target_link_libraries(datachannel-java PRIVATE mimalloc-static)
+    if(MSVC)
+        target_compile_options(datachannel-java PRIVATE /FI"${CMAKE_CURRENT_SOURCE_DIR}/src/mimalloc_redirect.h")
+    else()
+        target_compile_options(datachannel-java PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/src/mimalloc_redirect.h")
+    endif()
+endif()

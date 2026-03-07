@@ -1,15 +1,15 @@
 package tel.schich.libdatachannel;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tel.schich.jniaccess.JNIAccess;
 
 import java.nio.ByteBuffer;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 class PeerConnectionListener {
-    private static final Logger LOGGER = LoggerFactory.getLogger(PeerConnectionListener.class);
+    private static final Logger LOGGER = Logger.getLogger(PeerConnectionListener.class.getName());
 
     private final PeerConnection peer;
 
@@ -21,7 +21,7 @@ class PeerConnectionListener {
     void onLocalDescription(String sdp, String type) {
         final SessionDescriptionType mappedType = SessionDescriptionType.of(type);
         if (mappedType == null) {
-            LOGGER.error("Unknown SDP type {}!", type);
+            LOGGER.log(Level.SEVERE, "Unknown SDP type {0}!", type);
             return;
         }
         peer.onLocalDescription.invoke(h -> h.handleDescription(peer, sdp, mappedType));
@@ -36,7 +36,7 @@ class PeerConnectionListener {
     void onStateChange(int state) {
         final PeerState mappedState = PeerState.of(state);
         if (mappedState == null) {
-            LOGGER.error("Unknown state {}!", state);
+            LOGGER.log(Level.SEVERE, "Unknown state {0}!", state);
             return;
         }
         peer.onStateChange.invoke(h -> h.handleChange(peer, mappedState));
@@ -46,7 +46,7 @@ class PeerConnectionListener {
     void onIceStateChange(int iceState) {
         final IceState mappedState = IceState.of(iceState);
         if (mappedState == null) {
-            LOGGER.error("Unknown ICE state {}!", iceState);
+            LOGGER.log(Level.SEVERE, "Unknown ICE state {0}!", iceState);
             return;
         }
         peer.onIceStateChange.invoke(h -> h.handleChange(peer, mappedState));
@@ -56,7 +56,7 @@ class PeerConnectionListener {
     void onGatheringStateChange(int gatheringState) {
         final GatheringState mappedState = GatheringState.of(gatheringState);
         if (mappedState == null) {
-            LOGGER.error("Unknown gathering state {}!", gatheringState);
+            LOGGER.log(Level.SEVERE, "Unknown gathering state {0}!", gatheringState);
             return;
         }
         peer.onGatheringStateChange.invoke(h -> h.handleChange(peer, mappedState));
@@ -66,7 +66,7 @@ class PeerConnectionListener {
     void onSignalingStateChange(int signalingState) {
         final SignalingState mappedState = SignalingState.of(signalingState);
         if (mappedState == null) {
-            LOGGER.error("Unknown signaling state {}!", signalingState);
+            LOGGER.log(Level.SEVERE, "Unknown signaling state {0}!", signalingState);
             return;
         }
         peer.onSignalingStateChange.invoke(h -> h.handleChange(peer, mappedState));
@@ -87,7 +87,7 @@ class PeerConnectionListener {
     private <T> void invokeWithChannel(int handle, Function<DataChannel, EventListenerContainer<T>> listeners, BiConsumer<T, DataChannel> consumer) {
         final DataChannel channel = peer.channel(handle);
         if (channel == null) {
-            LOGGER.warn("Received event for unknown data channel {}!", handle);
+            LOGGER.log(Level.WARNING, "Received event for unknown data channel {0}!", handle);
             return;
         }
         listeners.apply(channel).invoke(h -> consumer.accept(h, channel));

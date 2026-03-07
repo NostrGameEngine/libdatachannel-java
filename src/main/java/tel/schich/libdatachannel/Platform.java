@@ -1,17 +1,16 @@
 package tel.schich.libdatachannel;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 class Platform {
-    private static final Logger LOGGER = LoggerFactory.getLogger(Platform.class);
+    private static final Logger LOGGER = Logger.getLogger(Platform.class.getName());
 
     private static final String LIB_PREFIX = "/native";
     private static final String PATH_PROP_PREFIX = "libdatachannel.native.";
@@ -64,7 +63,7 @@ class Platform {
     public static void loadNativeLibrary(String name, Class<?> base) {
         try {
             System.loadLibrary(name);
-            LOGGER.trace("Loaded native library {} from library path", name);
+            LOGGER.log(Level.FINEST, "Loaded native library {0} from library path", name);
         } catch (LinkageError e) {
             loadExplicitLibrary(name, base);
         }
@@ -143,7 +142,7 @@ class Platform {
     private static void loadExplicitLibrary(String name, Class<?> base) {
         String explicitLibraryPath = System.getProperty(PATH_PROP_PREFIX + name.toLowerCase() + PATH_PROP_FS_PATH);
         if (explicitLibraryPath != null) {
-            LOGGER.trace("Loading native library {} from {}", name, explicitLibraryPath);
+            LOGGER.log(Level.FINEST, "Loading native library {0} from {1}", new Object[]{name, explicitLibraryPath});
             loadSiblingDependencies(name, Path.of(explicitLibraryPath).getParent());
             System.load(explicitLibraryPath);
             return;
@@ -152,7 +151,7 @@ class Platform {
         String explicitLibraryClassPath = System.getProperty(classPathPropertyNameForLibrary(name));
         final String libName = libraryFilename(name);
         if (explicitLibraryClassPath != null) {
-            LOGGER.trace("Loading native library {} from explicit classpath at {}", name, explicitLibraryClassPath);
+            LOGGER.log(Level.FINEST, "Loading native library {0} from explicit classpath at {1}", new Object[]{name, explicitLibraryClassPath});
             try {
                 final Path tempDirectory = Files.createTempDirectory(name + "-");
                 final Path libPath = tempDirectory.resolve(libName);
@@ -164,7 +163,7 @@ class Platform {
         }
 
         final String sourceLibPath = LIB_PREFIX + "/" + libName;
-        LOGGER.trace("Loading native library {} from {}", name, sourceLibPath);
+        LOGGER.log(Level.FINEST, "Loading native library {0} from {1}", new Object[]{name, sourceLibPath});
 
         try {
             final Path tempDirectory = Files.createTempDirectory(name + "-");

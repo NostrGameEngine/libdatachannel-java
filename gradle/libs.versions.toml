@@ -2,16 +2,12 @@
 dockcrossPlugin = "0.4.3"
 jniAccessGenerator = "1.2.2"
 jdtAnnotations = "2.4.100"
-slf4j = "2.0.17"
-logback = "1.5.27"
 junitJupiter = "5.10.2"
 mavenDeployer = "0.5.2"
 
 [libraries]
 jniAccessGenerator = { module = "tel.schich:jni-access-generator", version.ref = "jniAccessGenerator" }
 jdtAnnotations = { module = "org.eclipse.jdt:org.eclipse.jdt.annotation", version.ref = "jdtAnnotations" }
-slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
-logbackClassic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junitJupiter" }
 
 [plugins]

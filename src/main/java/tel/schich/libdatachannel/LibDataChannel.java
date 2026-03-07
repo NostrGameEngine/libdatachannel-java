@@ -1,18 +1,18 @@
 package tel.schich.libdatachannel;
 
 import org.eclipse.jdt.annotation.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tel.schich.jniaccess.JNIAccess;
 
 import java.lang.ref.Cleaner;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.function.IntFunction;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public abstract class LibDataChannel {
     static final Cleaner CLEANER = Cleaner.create();
-    private static final Logger LOGGER = LoggerFactory.getLogger(LibDataChannel.class);
+    private static final Logger LOGGER = Logger.getLogger(LibDataChannel.class.getName());
     private static volatile boolean initialized = false;
     private static volatile IntFunction<ByteBuffer> allocator = ByteBuffer::allocateDirect;
     private static volatile String innerAllocator = "unknown";
@@ -49,19 +49,19 @@ public abstract class LibDataChannel {
         switch (level) {
             case 1:
             case 2:
-                LOGGER.error(message);
+                LOGGER.log(Level.SEVERE, message);
                 return;
             case 3:
-                LOGGER.warn(message);
+                LOGGER.log(Level.WARNING, message);
                 return;
             case 4:
-                LOGGER.info(message);
+                LOGGER.log(Level.INFO, message);
                 return;
             case 5:
-                LOGGER.debug(message);
+                LOGGER.log(Level.FINE, message);
                 return;
             case 6:
-                LOGGER.trace(message);
+                LOGGER.log(Level.FINEST, message);
         }
     }
 

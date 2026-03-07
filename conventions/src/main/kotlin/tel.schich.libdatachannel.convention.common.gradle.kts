@@ -45,10 +45,8 @@ repositories {
 
 dependencies {
     compileOnly(libs.jdtAnnotations)
-    implementation(libs.slf4j)
 
     testImplementation(libs.junitJupiter)
-    testImplementation(libs.logbackClassic)
 }
 
 publishing {

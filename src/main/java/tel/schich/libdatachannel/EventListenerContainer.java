@@ -1,17 +1,16 @@
 package tel.schich.libdatachannel;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.Closeable;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class EventListenerContainer<T> implements Closeable {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventListenerContainer.class);
+    private static final Logger LOGGER = Logger.getLogger(EventListenerContainer.class.getName());
 
     private final String eventName;
     private final Consumer<Boolean> lifecycleCallback;
@@ -33,14 +32,14 @@ public class EventListenerContainer<T> implements Closeable {
 
     void invoke(Consumer<T> invoker) {
         if (closed) {
-            LOGGER.warn("Invoke attempted on closed container for event {}", eventName);
+            LOGGER.log(Level.WARNING, "Invoke attempted on closed container for event {0}", eventName);
             return;
         }
         for (T listener : this.listeners) {
             try {
                 invoker.accept(listener);
             } catch (Throwable t) {
-                LOGGER.error("Handler for event {} failed!", eventName, t);
+                LOGGER.log(Level.SEVERE, "Handler for event " + eventName + " failed!", t);
             }
         }
     }

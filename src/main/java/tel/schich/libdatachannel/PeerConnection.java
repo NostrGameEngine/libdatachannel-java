@@ -1,8 +1,6 @@
 package tel.schich.libdatachannel;
 
 import org.eclipse.jdt.annotation.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static tel.schich.libdatachannel.LibDataChannelNative.rtcAddRemoteCandidate;
 import static tel.schich.libdatachannel.LibDataChannelNative.rtcAddTrack;
@@ -45,9 +43,11 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PeerConnection implements Closeable {
-    private static final Logger LOGGER = LoggerFactory.getLogger(PeerConnection.class);
+    private static final Logger LOGGER = Logger.getLogger(PeerConnection.class.getName());
 
     final int peerHandle;
     private final ConcurrentMap<Integer, DataChannel> channels;
@@ -177,7 +177,7 @@ public class PeerConnection implements Closeable {
         try {
             closeChannels();
         } catch (Exception e) {
-            LOGGER.warn("Failed to close channels of peer connection", e);
+            LOGGER.log(Level.WARNING, "Failed to close channels of peer connection", e);
         }
         cleanable.clean();
         onLocalDescription.close();

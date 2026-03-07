@@ -30,6 +30,7 @@ public abstract class LibDataChannel {
         }
 
         Platform.loadNativeLibrary(LIB_NAME, LibDataChannel.class);
+        innerAllocator = getInnerAllocatorNative();
 
         initialized = true;
     }

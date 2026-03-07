@@ -209,6 +209,17 @@ fun Jar.baseConfigure(compileTask: TaskProvider<DockcrossRunTask>, buildOutputDi
         include("native/libdatachannel-java.so")
         include("native/libdatachannel-java.dll")
         include("native/libdatachannel-java.dylib")
+        include("native/libmimalloc*.so")
+        include("native/libmimalloc*.dylib")
+        include("native/mimalloc*.dll")
+        includeEmptyDirs = false
+        eachFile {
+            val fileName = relativeSourcePath.lastName
+            if (fileName == "libdatachannel-java.so" || fileName == "libdatachannel-java.dll" || fileName == "libdatachannel-java.dylib") {
+                return@eachFile
+            }
+            relativePath = RelativePath.parse(true, "native/$fileName")
+        }
     }
 }
 
@@ -340,6 +351,9 @@ for (target in targets) {
             group = nativeGroup
             from(prebuiltPath.parentFile) {
                 include(prebuiltPath.name)
+                include("libmimalloc*.so")
+                include("libmimalloc*.dylib")
+                include("mimalloc*.dll")
                 includeEmptyDirs = false
                 eachFile {
                     val fileName = when (target.family) {
@@ -347,7 +361,12 @@ for (target in targets) {
                         "windows" -> "libdatachannel-java.dll"
                         else -> "libdatachannel-java.so"
                     }
-                    relativePath = RelativePath.parse(true, "native/$fileName")
+                    val outputName = if (relativeSourcePath.lastName == prebuiltPath.name) {
+                        fileName
+                    } else {
+                        relativeSourcePath.lastName
+                    }
+                    relativePath = RelativePath.parse(true, "native/$outputName")
                 }
             }
             archiveClassifier = target.classifier

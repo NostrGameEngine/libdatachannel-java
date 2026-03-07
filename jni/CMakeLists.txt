@@ -12,14 +12,21 @@ if(NOT ANDROID)
     include(FetchContent)
     FetchContent_Declare(
         mimalloc
-        GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
-        GIT_TAG v2.1.7
-        GIT_SHALLOW TRUE
+        URL https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.7.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP FALSE
     )
     set(MI_SECURE ON CACHE BOOL "Enable mimalloc security features" FORCE)
-    set(MI_BUILD_SHARED OFF CACHE BOOL "Build mimalloc as static library" FORCE)
+    set(MI_BUILD_SHARED ON CACHE BOOL "Build mimalloc as shared library" FORCE)
     set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
     FetchContent_MakeAvailable(mimalloc)
+    set_target_properties(mimalloc PROPERTIES VERSION "" SOVERSION "")
+    if(WIN32)
+        set(MIMALLOC_RUNTIME_NAME "mimalloc.dll")
+    elseif(APPLE)
+        set(MIMALLOC_RUNTIME_NAME "libmimalloc.dylib")
+    else()
+        set(MIMALLOC_RUNTIME_NAME "libmimalloc.so")
+    endif()
 endif()
 
 set(NO_WEBSOCKET ON CACHE BOOL "configure libdatachannel build")
@@ -97,10 +104,22 @@ add_library(datachannel-java SHARED
         src/callback.c)
 target_link_libraries(datachannel-java PRIVATE datachannel-static)
 if(NOT ANDROID)
-    target_link_libraries(datachannel-java PRIVATE mimalloc-static)
+    target_link_libraries(datachannel-java PRIVATE mimalloc)
     if(MSVC)
         target_compile_options(datachannel-java PRIVATE /FI"${CMAKE_CURRENT_SOURCE_DIR}/src/mimalloc_redirect.h")
     else()
         target_compile_options(datachannel-java PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/src/mimalloc_redirect.h")
     endif()
+    if(APPLE)
+        set_target_properties(datachannel-java PROPERTIES INSTALL_RPATH "@loader_path")
+    elseif(NOT WIN32)
+        set_target_properties(datachannel-java PROPERTIES INSTALL_RPATH "$ORIGIN")
+    endif()
+    add_custom_command(
+        TARGET datachannel-java POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:mimalloc>"
+            "$<TARGET_FILE_DIR:datachannel-java>/${MIMALLOC_RUNTIME_NAME}"
+        VERBATIM
+    )
 endif()

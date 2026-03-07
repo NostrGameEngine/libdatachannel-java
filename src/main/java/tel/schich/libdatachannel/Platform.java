@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 class Platform {
     private static final Logger LOGGER = LoggerFactory.getLogger(Platform.class);
@@ -123,10 +124,27 @@ class Platform {
         return libName + ".so";
     }
 
+    private static List<String> dependentLibraryFilenames(String name) {
+        if (!LibDataChannel.LIB_NAME.equals(name)) {
+            return List.of();
+        }
+        switch (getOS()) {
+            case WINDOWS:
+                return List.of("mimalloc.dll");
+            case MACOS:
+                return List.of("libmimalloc.dylib");
+            case LINUX:
+                return List.of("libmimalloc.so");
+            default:
+                return List.of();
+        }
+    }
+
     private static void loadExplicitLibrary(String name, Class<?> base) {
         String explicitLibraryPath = System.getProperty(PATH_PROP_PREFIX + name.toLowerCase() + PATH_PROP_FS_PATH);
         if (explicitLibraryPath != null) {
             LOGGER.trace("Loading native library {} from {}", name, explicitLibraryPath);
+            loadSiblingDependencies(name, Path.of(explicitLibraryPath).getParent());
             System.load(explicitLibraryPath);
             return;
         }
@@ -138,7 +156,7 @@ class Platform {
             try {
                 final Path tempDirectory = Files.createTempDirectory(name + "-");
                 final Path libPath = tempDirectory.resolve(libName);
-                loadFromClassPath(name, base, explicitLibraryClassPath, libPath);
+                loadFromClassPath(name, base, explicitLibraryClassPath, tempDirectory, libPath);
                 return;
             } catch (IOException e) {
                 throw new LinkageError("Unable to load native library " + name + "!", e);
@@ -151,22 +169,58 @@ class Platform {
         try {
             final Path tempDirectory = Files.createTempDirectory(name + "-");
             final Path libPath = tempDirectory.resolve(libName);
-            loadFromClassPath(name, base, sourceLibPath, libPath);
+            loadFromClassPath(name, base, sourceLibPath, tempDirectory, libPath);
         } catch (IOException e) {
             throw new LinkageError("Unable to load native library " + name + "!", e);
         }
     }
 
-    private static void loadFromClassPath(String name, Class<?> base, String classPath, Path fsPath) throws IOException {
+    private static void loadFromClassPath(String name, Class<?> base, String classPath, Path tempDirectory, Path fsPath) throws IOException {
+        for (String dependency : dependentLibraryFilenames(name)) {
+            final String dependencyClassPath = siblingClassPath(classPath, dependency);
+            final Path dependencyPath = tempDirectory.resolve(dependency);
+            copyFromClassPath(name, base, dependencyClassPath, dependencyPath, false);
+            if (Files.exists(dependencyPath)) {
+                System.load(dependencyPath.toString());
+                dependencyPath.toFile().deleteOnExit();
+            }
+        }
+
+        copyFromClassPath(name, base, classPath, fsPath, true);
+        System.load(fsPath.toString());
+        fsPath.toFile().deleteOnExit();
+    }
+
+    private static void loadSiblingDependencies(String name, Path directory) {
+        if (directory == null) {
+            return;
+        }
+        for (String dependency : dependentLibraryFilenames(name)) {
+            final Path dependencyPath = directory.resolve(dependency);
+            if (Files.exists(dependencyPath)) {
+                System.load(dependencyPath.toString());
+            }
+        }
+    }
+
+    private static String siblingClassPath(String classPath, String fileName) {
+        final int slashIndex = classPath.lastIndexOf('/');
+        if (slashIndex < 0) {
+            return fileName;
+        }
+        return classPath.substring(0, slashIndex + 1) + fileName;
+    }
+
+    private static void copyFromClassPath(String name, Class<?> base, String classPath, Path fsPath, boolean required) throws IOException {
         try (InputStream libStream = base.getResourceAsStream(classPath)) {
             if (libStream == null) {
-                throw new LinkageError("Failed to load the native library " + name + ": " + classPath + " not found.");
+                if (required) {
+                    throw new LinkageError("Failed to load the native library " + name + ": " + classPath + " not found.");
+                }
+                return;
             }
 
             Files.copy(libStream, fsPath, StandardCopyOption.REPLACE_EXISTING);
-
-            System.load(fsPath.toString());
-            fsPath.toFile().deleteOnExit();
         }
     }
 

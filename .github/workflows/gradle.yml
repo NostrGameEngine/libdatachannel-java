@@ -60,6 +60,7 @@ jobs:
         name: libdatachannel-${{ matrix.classifier }}
         path: |
           build/dockcross/host/native/libdatachannel-java.dylib
+          build/dockcross/host/native/libmimalloc*.dylib
         retention-days: 30
         if-no-files-found: error
 

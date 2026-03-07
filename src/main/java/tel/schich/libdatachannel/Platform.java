@@ -130,11 +130,11 @@ class Platform {
         }
         switch (getOS()) {
             case WINDOWS:
-                return List.of("mimalloc.dll");
+                return List.of("libdatachannel_mimalloc.dll");
             case MACOS:
-                return List.of("libmimalloc.dylib");
+                return List.of("libdatachannel_mimalloc.dylib");
             case LINUX:
-                return List.of("libmimalloc.so");
+                return List.of("libdatachannel_mimalloc.so");
             default:
                 return List.of();
         }

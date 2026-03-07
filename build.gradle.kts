@@ -209,9 +209,9 @@ fun Jar.baseConfigure(compileTask: TaskProvider<DockcrossRunTask>, buildOutputDi
         include("native/libdatachannel-java.so")
         include("native/libdatachannel-java.dll")
         include("native/libdatachannel-java.dylib")
-        include("native/libmimalloc*.so")
-        include("native/libmimalloc*.dylib")
-        include("native/mimalloc*.dll")
+        include("native/libdatachannel_mimalloc*.so")
+        include("native/libdatachannel_mimalloc*.dylib")
+        include("native/libdatachannel_mimalloc*.dll")
         includeEmptyDirs = false
         eachFile {
             val fileName = relativeSourcePath.lastName
@@ -351,9 +351,9 @@ for (target in targets) {
             group = nativeGroup
             from(prebuiltPath.parentFile) {
                 include(prebuiltPath.name)
-                include("libmimalloc*.so")
-                include("libmimalloc*.dylib")
-                include("mimalloc*.dll")
+                include("libdatachannel_mimalloc*.so")
+                include("libdatachannel_mimalloc*.dylib")
+                include("libdatachannel_mimalloc*.dll")
                 includeEmptyDirs = false
                 eachFile {
                     val fileName = when (target.family) {

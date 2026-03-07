@@ -2,8 +2,8 @@
 #define LIBDATACHANNEL_JNI_MIMALLOC_REDIRECT_H
 
 #if !defined(__ANDROID__)
+#include "mimalloc_prefix_symbols.h"
 #include <mimalloc.h>
-
 
 #define malloc mi_malloc
 #define calloc mi_calloc

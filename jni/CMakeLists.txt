@@ -16,16 +16,29 @@ if(NOT ANDROID)
         DOWNLOAD_EXTRACT_TIMESTAMP FALSE
     )
     set(MI_SECURE ON CACHE BOOL "Enable mimalloc security features" FORCE)
+    set(MI_OVERRIDE OFF CACHE BOOL "Do not override global malloc symbols" FORCE)
+    set(MI_WIN_REDIRECT OFF CACHE BOOL "Disable mimalloc Windows redirect exports" FORCE)
     set(MI_BUILD_SHARED ON CACHE BOOL "Build mimalloc as shared library" FORCE)
     set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
     FetchContent_MakeAvailable(mimalloc)
+    set(MIMALLOC_PREFIX_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/src/mimalloc_prefix_symbols.h")
+    if(MSVC)
+        target_compile_options(mimalloc PRIVATE /FI"${MIMALLOC_PREFIX_HEADER}")
+    else()
+        target_compile_options(mimalloc PRIVATE -include "${MIMALLOC_PREFIX_HEADER}")
+    endif()
+    if(WIN32)
+        set_target_properties(mimalloc PROPERTIES OUTPUT_NAME "libdatachannel_mimalloc")
+    else()
+        set_target_properties(mimalloc PROPERTIES OUTPUT_NAME "datachannel_mimalloc")
+    endif()
     set_target_properties(mimalloc PROPERTIES VERSION "" SOVERSION "")
     if(WIN32)
-        set(MIMALLOC_RUNTIME_NAME "mimalloc.dll")
+        set(MIMALLOC_RUNTIME_NAME "libdatachannel_mimalloc.dll")
     elseif(APPLE)
-        set(MIMALLOC_RUNTIME_NAME "libmimalloc.dylib")
+        set(MIMALLOC_RUNTIME_NAME "libdatachannel_mimalloc.dylib")
     else()
-        set(MIMALLOC_RUNTIME_NAME "libmimalloc.so")
+        set(MIMALLOC_RUNTIME_NAME "libdatachannel_mimalloc.so")
     endif()
 endif()
 
@@ -120,6 +133,15 @@ if(NOT ANDROID)
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "$<TARGET_FILE:mimalloc>"
             "$<TARGET_FILE_DIR:datachannel-java>/${MIMALLOC_RUNTIME_NAME}"
+        VERBATIM
+    )
+    add_custom_command(
+        TARGET datachannel-java POST_BUILD
+        COMMAND "${CMAKE_COMMAND}"
+            -DINPUT_FILE=$<TARGET_FILE:mimalloc>
+            -DNM_TOOL=${CMAKE_NM}
+            -DOBJDUMP_TOOL=${CMAKE_OBJDUMP}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_mimalloc_symbols.cmake"
         VERBATIM
     )
 endif()

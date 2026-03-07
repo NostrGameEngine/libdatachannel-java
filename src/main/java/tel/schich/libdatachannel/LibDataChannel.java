@@ -15,6 +15,7 @@ public abstract class LibDataChannel {
     private static final Logger LOGGER = LoggerFactory.getLogger(LibDataChannel.class);
     private static volatile boolean initialized = false;
     private static volatile IntFunction<ByteBuffer> allocator = ByteBuffer::allocateDirect;
+    private static volatile String innerAllocator = "unknown";
 
     public static final String LIB_NAME = "datachannel-java";
 
@@ -31,6 +32,11 @@ public abstract class LibDataChannel {
         Platform.loadNativeLibrary(LIB_NAME, LibDataChannel.class);
 
         initialized = true;
+    }
+
+    public static String getInnerAllocator() {
+        initialize();
+        return innerAllocator;
     }
 
     /**
@@ -85,4 +91,5 @@ public abstract class LibDataChannel {
      
 
     private static native void freeMemory(long pointer);
+    private static native String getInnerAllocatorNative();
 }

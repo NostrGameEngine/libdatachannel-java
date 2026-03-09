@@ -1,7 +1,7 @@
 # libdatachannel-java (NGE)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-blue.svg)](https://www.mozilla.org/en-US/MPL/2.0/)
 
-This is a fork of [libdatachannel](https://github.com/paullouisageneau/libdatachannel) Java wrappers: [libdatachannel-java](https://github.com/pschichtel/libdatachannel-java) intended to be used within the Nostr Game Engine codebase.
+This is a fork of [libdatachannel](https://github.com/paullouisageneau/libdatachannel) C Java wrappers: [libdatachannel-java](https://github.com/pschichtel/libdatachannel-java/tree/v0.24.1.1) intended to be used within the Nostr Game Engine codebase.
 
 The fork diverges from the original repository in few key areas:
 

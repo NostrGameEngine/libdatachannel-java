@@ -56,10 +56,10 @@ public abstract class LibDataChannel {
                 LOGGER.log(Level.WARNING, message);
                 return;
             case 4:
-                LOGGER.log(Level.INFO, message);
+                LOGGER.log(Level.FINE, message);
                 return;
             case 5:
-                LOGGER.log(Level.FINE, message);
+                LOGGER.log(Level.FINER, message);
                 return;
             case 6:
                 LOGGER.log(Level.FINEST, message);

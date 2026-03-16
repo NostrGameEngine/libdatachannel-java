@@ -50,10 +50,10 @@ public abstract class LibDataChannel {
         switch (level) {
             case 1:
             case 2:
-                LOGGER.log(Level.SEVERE, message);
+                LOGGER.log(Level.FINE, message);
                 return;
             case 3:
-                LOGGER.log(Level.WARNING, message);
+                LOGGER.log(Level.FINE, message);
                 return;
             case 4:
                 LOGGER.log(Level.FINE, message);

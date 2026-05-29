@@ -44,9 +44,9 @@ repositories {
 }
 
 dependencies {
-    compileOnly(libs.jdtAnnotations)
+    compileOnly(libs.jdt.annotations)
 
-    testImplementation(libs.junitJupiter)
+    testImplementation(libs.junit.jupiter.engine)
 }
 
 publishing {

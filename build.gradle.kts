@@ -455,8 +455,8 @@ packageNativeAll.configure {
 artifacts.add(iosConfiguration.name, packageNativeForIos)
 
 dependencies {
-    annotationProcessor(libs.jniAccessGenerator)
-    compileOnly(libs.jniAccessGenerator)
+    annotationProcessor(libs.jni.access.generator)
+    compileOnly(libs.jni.access.generator)
 
     testImplementation(files(packageNativeForHost))
 }
@@ -548,5 +548,23 @@ val githubActions by tasks.registering(DefaultTask::class) {
     } else {
         logger.lifecycle("Job will only build!")
         dependsOn(tasks.assemble)
+    }
+}
+
+tasks.register("refreshCatalog") {
+    group = "build setup"
+    description = "Downloads the central NostrGameEngine Gradle version catalog."
+
+    val catalogUrl = providers.gradleProperty("centralCatalogUrl")
+        .orElse("https://raw.githubusercontent.com/NostrGameEngine/libs.catalog/main/libs.versions.toml")
+    val outputFile = layout.projectDirectory.file("gradle/libs.versions.toml")
+
+    outputs.file(outputFile)
+
+    doLast {
+        val target = outputFile.asFile
+        target.parentFile.mkdirs()
+        target.writeText(java.net.URI.create(catalogUrl.get()).toURL().readText())
+        println("Refreshed $target")
     }
 }

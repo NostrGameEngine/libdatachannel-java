@@ -1,6 +1,8 @@
 name: Build
 
 on:
+  schedule:
+    - cron: '07 3 * * 0'
   push:
     branches: [ '*' ]
     tags: [ '*' ]

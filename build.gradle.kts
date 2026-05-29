@@ -105,6 +105,10 @@ val androidConfiguration = configurations.register(Constants.ANDROID_CONFIG) {
     isCanBeConsumed = true
 }
 
+val iosConfiguration = configurations.register(Constants.IOS_CONFIG) {
+    isCanBeConsumed = true
+}
+
 val jniPath = project.layout.projectDirectory.dir("jni")
 tasks.compileJava.configure {
     val annotationProcessorArgs = listOf(
@@ -389,6 +393,66 @@ for (target in targets) {
 
     artifacts.add(target.outputTo.name, packageNative)
 }
+
+val iosOutputDir: Directory = dockcrossOutputDir.dir("ios")
+val iosPrebuiltPath = project.findProperty("libdatachannel.ios.prebuilt-path")
+    ?.toString()
+    ?.ifBlank { null }
+    ?.let { Paths.get(it).toFile() }
+val compileNativeForIos by tasks.registering(DockcrossRunTask::class) {
+    baseConfigure(
+        iosOutputDir,
+        BuildTarget(
+            image = null,
+            family = "ios",
+            classifier = "ios",
+            outputTo = iosConfiguration,
+        )
+    )
+    unsafeWritableMountSource = true
+    runner(NonContainerRunner)
+    extraEnv.put(
+        "IOS_MIN_VERSION",
+        providers.gradleProperty("libdatachannel.ios.minVersion").orElse("15.0")
+    )
+}
+
+val packageNativeForIos by tasks.registering(Jar::class) {
+    group = nativeGroup
+    archiveClassifier = "ios"
+    if (iosPrebuiltPath == null) {
+        dependsOn(compileNativeForIos)
+        from(iosOutputDir) {
+            include("native/lib/ios/**")
+            includeEmptyDirs = false
+            eachFile {
+                relativePath = RelativePath.parse(true, relativePath.pathString.removePrefix("native/"))
+            }
+        }
+    } else {
+        from(iosPrebuiltPath.parentFile) {
+            include("${iosPrebuiltPath.name}/**")
+            include("${iosPrebuiltPath.name}.json")
+            includeEmptyDirs = false
+            into("lib/ios")
+        }
+        doFirst {
+            if (!iosPrebuiltPath.isDirectory) {
+                throw GradleException("Prebuilt iOS xcframework does not exist: $iosPrebuiltPath")
+            }
+        }
+    }
+}
+
+publishing.publications.withType<MavenPublication>().configureEach {
+    artifact(packageNativeForIos)
+}
+
+packageNativeAll.configure {
+    dependsOn(packageNativeForIos)
+}
+
+artifacts.add(iosConfiguration.name, packageNativeForIos)
 
 dependencies {
     annotationProcessor(libs.jniAccessGenerator)

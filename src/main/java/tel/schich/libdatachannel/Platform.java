@@ -41,6 +41,14 @@ class Platform {
         }
     }
 
+    public static boolean isIOS() {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        return Boolean.getBoolean("libdatachannel.ios") ||
+                osName.equals("ios") ||
+                osName.contains("iphone") ||
+                osName.contains("ipad");
+    }
+
     public static boolean isMacOS() {
         return System.getProperty("os.name").toLowerCase().contains("mac");
     }
@@ -50,6 +58,8 @@ class Platform {
             return OS.LINUX;
         } else if (isAndroid()) {
             return OS.ANDROID;
+        } else if (isIOS()) {
+            return OS.IOS;
         } else if (isMacOS()) {
             return OS.MACOS;
         } else if (isWindows()) {
@@ -227,6 +237,7 @@ class Platform {
         LINUX,
         WINDOWS,
         ANDROID,
+        IOS,
         MACOS,
         UNKNOWN,
     }

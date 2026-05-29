@@ -8,7 +8,15 @@
 
 static JavaVM* global_JVM;
 static pthread_key_t thread_key;
+static pthread_once_t thread_key_once = PTHREAD_ONCE_INIT;
 static volatile jint jvm_unloading = 0;
+static volatile jint jvm_loaded = 0;
+
+void detach_thread();
+
+static void create_thread_key() {
+    pthread_key_create(&thread_key, detach_thread);
+}
 
 void detach_thread() {
     JavaVM* jvm = pthread_getspecific(thread_key);
@@ -50,21 +58,45 @@ void logger_callback(rtcLogLevel level, const char* message) {
     }
 }
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
-    pthread_key_create(&thread_key, detach_thread);
+static jint initialize_jni(JavaVM* jvm) {
+    if (jvm_loaded && global_JVM == jvm && !jvm_unloading) {
+        return JNI_VERSION;
+    }
+    pthread_once(&thread_key_once, create_thread_key);
     global_JVM = jvm;
     jvm_unloading = 0;
     JNIEnv* env = get_jni_env_from_jvm(jvm);
     module_OnLoad(env);
     rtcInitLogger(RTC_LOG_VERBOSE, &logger_callback);
     rtcPreload();
+    jvm_loaded = 1;
     return JNI_VERSION;
 }
 
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
+    (void) reserved;
+    return initialize_jni(jvm);
+}
+
+JNIEXPORT void JNICALL Java_tel_schich_libdatachannel_LibDataChannel_initializeNative(JNIEnv* env, jclass clazz) {
+    (void) clazz;
+    JavaVM* jvm = NULL;
+    if ((*env)->GetJavaVM(env, &jvm) != JNI_OK || jvm == NULL) {
+        jclass exception_class = (*env)->FindClass(env, "java/lang/IllegalStateException");
+        if (exception_class != NULL) {
+            (*env)->ThrowNew(env, exception_class, "Unable to resolve JavaVM for libdatachannel initialization");
+        }
+        return;
+    }
+    initialize_jni(jvm);
+}
+
 JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* jvm, void* reserved) {
+    (void) reserved;
     jvm_unloading = 1;
     rtcCleanup();
     JNIEnv* env = get_jni_env_from_jvm(jvm);
     module_OnUnload(env);
     global_JVM = NULL;
+    jvm_loaded = 0;
 }

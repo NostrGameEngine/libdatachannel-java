@@ -10,5 +10,7 @@ include("arch-detect")
 project(":arch-detect").name = "libdatachannel-java-arch-detect"
 include("android")
 project(":android").name = "libdatachannel-java-android"
+include("ios")
+project(":ios").name = "libdatachannel-java-ios"
 
 includeBuild("example/java")

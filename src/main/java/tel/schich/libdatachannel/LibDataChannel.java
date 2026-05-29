@@ -29,7 +29,11 @@ public abstract class LibDataChannel {
             return;
         }
 
-        Platform.loadNativeLibrary(LIB_NAME, LibDataChannel.class);
+        if (Platform.isIOS()) {
+            initializeNative();
+        } else {
+            Platform.loadNativeLibrary(LIB_NAME, LibDataChannel.class);
+        }
         innerAllocator = getInnerAllocatorNative();
 
         initialized = true;
@@ -91,6 +95,7 @@ public abstract class LibDataChannel {
 
      
 
+    private static native void initializeNative();
     private static native void freeMemory(long pointer);
     private static native String getInnerAllocatorNative();
 }

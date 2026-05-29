@@ -4,6 +4,7 @@ statically_linked_platforms = {
     "Windows",
     "Macos",
     "Android",
+    "iOS",
 }
 
 
@@ -14,3 +15,4 @@ class LibDataChannel(ConanFile):
 
     def configure(self):
         self.options["openssl"].shared = f"{self.settings.os}" not in statically_linked_platforms
+        self.options["openssl"].no_apps = True

@@ -65,7 +65,9 @@ jobs:
         if-no-files-found: error
 
   build:
-    needs: build-macos
+    needs:
+    - build-macos
+    - build-ios
     runs-on: ubuntu-latest
     environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') ) && 'sonatype-central' || null }}
     steps:
@@ -97,11 +99,18 @@ jobs:
         name: libdatachannel-macos-x86_64
         path: artifacts/macos-x86_64/
 
+    - name: Download iOS artifacts
+      uses: actions/download-artifact@v7
+      with:
+        name: libdatachannel-ios
+        path: artifacts/ios/
+
     - name: Build
       run: |
         prebuilts=(
           -Plibdatachannel.macos-arm64.prebuilt-path=artifacts/macos-arm64/libdatachannel-java.dylib
           -Plibdatachannel.macos-x86_64.prebuilt-path=artifacts/macos-x86_64/libdatachannel-java.dylib
+          -Plibdatachannel.ios.prebuilt-path=artifacts/ios/LibDataChannelJava.xcframework
         )
         ./gradlew --no-configuration-cache :githubActions "${prebuilts[@]}"
       env:
@@ -112,3 +121,42 @@ jobs:
         MAVEN_CENTRAL_PORTAL_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
         MAVEN_CENTRAL_PORTAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         LIBDATACHANNEL_JAVA_GROUP_OVERRIDE: ${{ vars.LIBDATACHANNEL_JAVA_GROUP_OVERRIDE   }}
+
+  build-ios:
+    name: Build iOS Native Frameworks
+    runs-on: macos-26
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-tags: 'true'
+        fetch-depth: '0'
+        submodules: recursive
+
+    - name: Set up JDK
+      uses: actions/setup-java@v5
+      with:
+        java-version: '25'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Install dependencies
+      run: |
+        brew update
+        brew uninstall cmake
+        brew install cmake conan
+        conan --version
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v5
+
+    - name: Build iOS xcframework
+      run: ./gradlew --no-configuration-cache compileNativeForIos
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: libdatachannel-ios
+        path: build/dockcross/ios/native/lib/ios/
+        retention-days: 30
+        if-no-files-found: error

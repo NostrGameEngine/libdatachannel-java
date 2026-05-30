@@ -3,6 +3,9 @@
 #include <jni.h>
 #include <pthread.h>
 #include <rtc/rtc.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 #define JNI_VERSION JNI_VERSION_1_6
 
@@ -67,8 +70,17 @@ static jint initialize_jni(JavaVM* jvm) {
     jvm_unloading = 0;
     JNIEnv* env = get_jni_env_from_jvm(jvm);
     module_OnLoad(env);
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+    /*
+     * The iOS static-link path runs inside GraalVM/libJGLIOS. Re-entering Java
+     * from the native logger while libdatachannel initializes can deadlock the
+     * first peer creation, so keep logging on the library default path there.
+     */
+    rtcSetThreadPoolSize(2);
+#else
     rtcInitLogger(RTC_LOG_VERBOSE, &logger_callback);
     rtcPreload();
+#endif
     jvm_loaded = 1;
     return JNI_VERSION;
 }

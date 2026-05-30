@@ -34,6 +34,7 @@ implementation("org.ngengine:libdatachannel-java:0.24.1.nge5")
 implementation("org.ngengine:libdatachannel-java-ios:0.24.1.nge5")
 ```
 
-The iOS module bundles `LibDataChannelJava.xcframework` under `lib/ios`, so
-libJGLIOS can link the correct device or simulator slice from the runtime
+The iOS module bundles `LibDataChannelJava.xcframework`,
+`LibSSL.xcframework`, and `LibCrypto.xcframework` under `lib/ios`, so
+libJGLIOS can link the correct device or simulator slices from the runtime
 classpath.

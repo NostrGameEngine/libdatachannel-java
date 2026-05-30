@@ -41,6 +41,89 @@ write_ios_info_plist() {
 EOF
 }
 
+copy_ios_framework_slice() {
+  local slice_root=$1
+  local framework_name=$2
+  local library_file=$3
+  local min_ios_version=$4
+  local framework_dir="${slice_root}/${framework_name}.framework"
+
+  if [ ! -f "$library_file" ]
+  then
+    echo "Missing iOS library for ${framework_name}: ${library_file}" >&2
+    exit 1
+  fi
+
+  rm -rf "$framework_dir"
+  mkdir -p "$framework_dir/Headers"
+  cp -v "$library_file" "${framework_dir}/${framework_name}"
+  write_ios_info_plist "${framework_dir}/Info.plist" "$framework_name" "$min_ios_version"
+}
+
+find_conan_package_folder() {
+  local conan_install_dir=$1
+  local file_prefix=$2
+  local variable_prefix=$3
+  local data_file
+  data_file="$(find "$conan_install_dir" -maxdepth 1 -name "${file_prefix}-*-data.cmake" -print -quit)"
+  if [ -z "$data_file" ]
+  then
+    echo "Unable to find ${file_prefix} Conan data file in ${conan_install_dir}" >&2
+    exit 1
+  fi
+
+  local package_folder
+  package_folder="$(sed -nE "s/^set\\(${variable_prefix}_PACKAGE_FOLDER_[^ ]* \"([^\"]+)\"\\).*$/\\1/p" "$data_file" | head -n 1)"
+  if [ -z "$package_folder" ] || [ ! -d "$package_folder" ]
+  then
+    echo "Unable to resolve ${file_prefix} package folder from ${data_file}" >&2
+    exit 1
+  fi
+  printf '%s\n' "$package_folder"
+}
+
+create_ios_xcframework() {
+  local framework_name=$1
+  local xcframework_dir="${OUTPUT_DIR}/lib/ios/${framework_name}.xcframework"
+
+  rm -rf "$xcframework_dir"
+  mkdir -p "$(dirname "$xcframework_dir")"
+  xcodebuild -create-xcframework \
+    -framework "${OUTPUT_DIR}/ios/ios-arm64/${framework_name}.framework" \
+    -framework "${OUTPUT_DIR}/ios/ios-arm64-simulator/${framework_name}.framework" \
+    -output "$xcframework_dir"
+}
+
+write_ios_xcframework_metadata() {
+  local framework_name=$1
+  local force_load=$2
+  local metadata_file="${OUTPUT_DIR}/lib/ios/${framework_name}.xcframework.json"
+
+  cat > "$metadata_file" <<EOF
+{
+  "name": "${framework_name}",
+  "embed": false,
+  "forceLoad": ${force_load}
+}
+EOF
+}
+
+write_libdatachannel_ios_xcframework_metadata() {
+  local framework_name='LibDataChannelJava'
+  local metadata_file="${OUTPUT_DIR}/lib/ios/${framework_name}.xcframework.json"
+
+  cat > "$metadata_file" <<EOF
+{
+  "name": "${framework_name}",
+  "embed": false,
+  "forceLoad": true,
+  "systemFrameworks": [
+    "Security"
+  ]
+}
+EOF
+}
+
 write_conan_build_profile() {
   local profile=$1
   local host_arch
@@ -129,39 +212,27 @@ build_ios_slice() {
     -DBUILD_SHARED_LIBS=OFF
   cmake --build "$build_dir" --target datachannel-java-ios-archive --parallel "${JOBS:-1}"
 
-  local framework_dir="${slice_root}/${framework_name}.framework"
-  rm -rf "$framework_dir"
-  mkdir -p "$framework_dir/Headers"
-  cp -v "${build_dir}/${framework_name}" "${framework_dir}/${framework_name}"
-  write_ios_info_plist "${framework_dir}/Info.plist" "$framework_name" "$min_ios_version"
+  copy_ios_framework_slice "$slice_root" "$framework_name" "${build_dir}/${framework_name}" "$min_ios_version"
+
+  local openssl_package_dir
+  openssl_package_dir="$(find_conan_package_folder "$conan_install_dir" 'OpenSSL' 'openssl')"
+  copy_ios_framework_slice "$slice_root" 'LibSSL' "${openssl_package_dir}/lib/libssl.a" "$min_ios_version"
+  copy_ios_framework_slice "$slice_root" 'LibCrypto' "${openssl_package_dir}/lib/libcrypto.a" "$min_ios_version"
 }
 
 if [ "$TARGET_FAMILY" = 'ios' ]
 then
   min_ios_version="${IOS_MIN_VERSION:-15.0}"
-  framework_name='LibDataChannelJava'
-  xcframework_dir="${OUTPUT_DIR}/lib/ios/${framework_name}.xcframework"
-  metadata_file="${OUTPUT_DIR}/lib/ios/${framework_name}.xcframework.json"
 
   build_ios_slice 'iphoneos' 'iphoneos' "arm64-apple-ios${min_ios_version}" 'ios-arm64' "$min_ios_version"
   build_ios_slice 'iphonesimulator' 'iphonesimulator' "arm64-apple-ios${min_ios_version}-simulator" 'ios-arm64-simulator' "$min_ios_version"
 
-  rm -rf "$xcframework_dir"
-  mkdir -p "$(dirname "$xcframework_dir")"
-  xcodebuild -create-xcframework \
-    -framework "${OUTPUT_DIR}/ios/ios-arm64/${framework_name}.framework" \
-    -framework "${OUTPUT_DIR}/ios/ios-arm64-simulator/${framework_name}.framework" \
-    -output "$xcframework_dir"
-  cat > "$metadata_file" <<EOF
-{
-  "name": "${framework_name}",
-  "embed": false,
-  "forceLoad": true,
-  "systemFrameworks": [
-    "Security"
-  ]
-}
-EOF
+  create_ios_xcframework 'LibDataChannelJava'
+  create_ios_xcframework 'LibSSL'
+  create_ios_xcframework 'LibCrypto'
+  write_libdatachannel_ios_xcframework_metadata
+  write_ios_xcframework_metadata 'LibSSL' true
+  write_ios_xcframework_metadata 'LibCrypto' true
   exit 0
 fi
 

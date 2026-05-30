@@ -182,7 +182,7 @@ if(LIBDATACHANNEL_JNI_IOS)
         "$<TARGET_FILE:datachannel-static>"
         "$<TARGET_FILE:${LIBDATACHANNEL_MIMALLOC_TARGET}>"
     )
-    foreach(candidate_target IN ITEMS usrsctp juice-static OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
+    foreach(candidate_target IN ITEMS usrsctp juice-static)
         if(TARGET ${candidate_target})
             list(APPEND LIBDATACHANNEL_JAVA_IOS_ARCHIVES "$<TARGET_FILE:${candidate_target}>")
         endif()

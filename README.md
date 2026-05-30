@@ -14,14 +14,14 @@ The fork diverges from the original repository in few key areas:
 
 ### Windows, MacOS, Linux
 ```kotlin
-implementation("org.ngengine:libdatachannel-java:0.24.1.nge5")
-implementation("org.ngengine:libdatachannel-java-arch-detect:0.24.1.nge5")
+implementation("org.ngengine:libdatachannel-java:0.24.1.nge7")
+implementation("org.ngengine:libdatachannel-java-arch-detect:0.24.1.nge7")
 ```
 
 ### Android
 ```kotlin
-implementation("org.ngengine:libdatachannel-java:0.24.1.nge5")
-implementation("org.ngengine:libdatachannel-java-android:0.24.1.nge5")
+implementation("org.ngengine:libdatachannel-java:0.24.1.nge7")
+implementation("org.ngengine:libdatachannel-java-android:0.24.1.nge7")
 ```  
 
 To use libdatachannel on Android, the following permissions are required:
@@ -30,8 +30,8 @@ To use libdatachannel on Android, the following permissions are required:
 
 ### iOS with libJGLIOS
 ```kotlin
-implementation("org.ngengine:libdatachannel-java:0.24.1.nge5")
-implementation("org.ngengine:libdatachannel-java-ios:0.24.1.nge5")
+implementation("org.ngengine:libdatachannel-java:0.24.1.nge7")
+implementation("org.ngengine:libdatachannel-java-ios:0.24.1.nge7")
 ```
 
 The iOS module bundles `LibDataChannelJava.xcframework`,

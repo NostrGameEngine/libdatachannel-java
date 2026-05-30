@@ -430,15 +430,24 @@ val packageNativeForIos by tasks.registering(Jar::class) {
             }
         }
     } else {
-        from(iosPrebuiltPath.parentFile) {
-            include("${iosPrebuiltPath.name}/**")
-            include("${iosPrebuiltPath.name}.json")
-            includeEmptyDirs = false
-            into("lib/ios")
-        }
         doFirst {
             if (!iosPrebuiltPath.isDirectory) {
-                throw GradleException("Prebuilt iOS xcframework does not exist: $iosPrebuiltPath")
+                throw GradleException("Prebuilt iOS path does not exist or is not a directory: $iosPrebuiltPath")
+            }
+        }
+        if (iosPrebuiltPath.name.endsWith(".xcframework")) {
+            from(iosPrebuiltPath.parentFile) {
+                include("${iosPrebuiltPath.name}/**")
+                include("${iosPrebuiltPath.name}.json")
+                includeEmptyDirs = false
+                into("lib/ios")
+            }
+        } else {
+            from(iosPrebuiltPath) {
+                include("*.xcframework/**")
+                include("*.xcframework.json")
+                includeEmptyDirs = false
+                into("lib/ios")
             }
         }
     }

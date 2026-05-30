@@ -108,7 +108,7 @@ jobs:
         prebuilts=(
           -Plibdatachannel.macos-arm64.prebuilt-path=artifacts/macos-arm64/libdatachannel-java.dylib
           -Plibdatachannel.macos-x86_64.prebuilt-path=artifacts/macos-x86_64/libdatachannel-java.dylib
-          -Plibdatachannel.ios.prebuilt-path=artifacts/ios/LibDataChannelJava.xcframework
+          -Plibdatachannel.ios.prebuilt-path=artifacts/ios
         )
         ./gradlew --no-configuration-cache :githubActions "${prebuilts[@]}"
       env:

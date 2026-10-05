@@ -1,3 +1,5 @@
+import org.gradle.kotlin.dsl.support.serviceOf
+
 plugins {
     id("tel.schich.libdatachannel.convention.common")
 }
@@ -15,6 +17,16 @@ dependencies {
 }
 
 tasks.jar.configure {
+    val nativeChecker = rootProject.layout.projectDirectory.file("tools/verify_macos_native.py")
+    inputs.file(nativeChecker)
+    doLast {
+        val execOps = project.serviceOf<ExecOperations>()
+        for (architecture in listOf("arm64", "x86_64")) {
+            execOps.exec {
+                commandLine("python3", nativeChecker.asFile, architecture, archiveFile.get().asFile)
+            }
+        }
+    }
     dependsOn(nativeLibs)
     for (jar in nativeLibs.get().resolvedConfiguration.resolvedArtifacts) {
         val classifier = jar.classifier ?: continue

@@ -18,6 +18,13 @@ implementation("org.ngengine:libdatachannel-java:0.24.1.nge8")
 implementation("org.ngengine:libdatachannel-java-arch-detect:0.24.1.nge8")
 ```
 
+Bundled desktop natives are extracted together with their dependencies into a new
+private directory for each load. The loader tries `java.io.tmpdir`, the user cache,
+and then `~/.nge`, rejecting unsafe directories and non-executable filesystems.
+Extracted files are scheduled for removal at normal JVM exit. To manage extraction
+externally, set `libdatachannel.native.datachannel-java.path` to the absolute native
+library path and place its allocator dependency beside it.
+
 ### Android
 ```kotlin
 implementation("org.ngengine:libdatachannel-java:0.24.1.nge8")

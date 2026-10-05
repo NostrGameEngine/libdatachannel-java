@@ -238,6 +238,20 @@ val compileNativeForHost by tasks.registering(DockcrossRunTask::class) {
 val packageNativeForHost by tasks.registering(Jar::class) {
     baseConfigure(compileNativeForHost, nativeForHostOutputDir)
     archiveClassifier = "host"
+    if (System.getProperty("os.name").lowercase().contains("mac")) {
+        val nativeChecker = project.layout.projectDirectory.file("tools/verify_macos_native.py")
+        val nativeArchitecture = when (System.getProperty("os.arch")) {
+            "aarch64", "arm64" -> "arm64"
+            else -> "x86_64"
+        }
+        val execOps = project.serviceOf<ExecOperations>()
+        inputs.file(nativeChecker)
+        doLast {
+            execOps.exec {
+                commandLine("python3", nativeChecker.asFile, nativeArchitecture, archiveFile.get().asFile)
+            }
+        }
+    }
 }
 
 data class BuildTarget(
@@ -383,6 +397,26 @@ for (target in targets) {
         }
     }
 
+    if (target.family == "macos") {
+        val nativeChecker = project.layout.projectDirectory.file("tools/verify_macos_native.py")
+        val nativeArchitecture = target.classifier.removePrefix("macos-")
+        val execOps = project.serviceOf<ExecOperations>()
+        packageNative.configure {
+            inputs.file(nativeChecker)
+            doFirst {
+                val stagedDirectory = prebuiltPath?.parentFile ?: outputDir.dir("native").asFile
+                execOps.exec {
+                    commandLine("python3", nativeChecker.asFile, nativeArchitecture, stagedDirectory)
+                }
+            }
+            doLast {
+                execOps.exec {
+                    commandLine("python3", nativeChecker.asFile, nativeArchitecture, archiveFile.get().asFile)
+                }
+            }
+        }
+    }
+
     publishing.publications.withType<MavenPublication>().configureEach {
         artifact(packageNative)
     }
@@ -468,6 +502,11 @@ dependencies {
     compileOnly(libs.jniAccessGenerator)
 
     testImplementation(files(packageNativeForHost))
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    systemProperty("native.test.jar", packageNativeForHost.get().archiveFile.get().asFile.absolutePath)
 }
 
 publishing.publications.withType<MavenPublication>().configureEach {

@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.DirectoryStream;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -98,7 +98,9 @@ class Platform {
 
     private static String detectCpuArch() {
         String arch = System.getProperty("os.arch").toLowerCase();
-        if (arch.contains("arm")) {
+        if (arch.contains("aarch64") || arch.contains("arm64")) {
+            return getOS() == OS.MACOS ? "arm64" : "aarch64";
+        } else if (arch.contains("arm")) {
             return "armv7";
         } else if (arch.contains("86") || arch.contains("amd")) {
             if (arch.contains("64")) {
@@ -110,11 +112,6 @@ class Platform {
                 return "riscv64";
             }
             return "riscv32";
-        } else if (arch.contains("aarch64") || arch.contains("arm64")) {
-            if (getOS() == OS.MACOS) {
-                return "arm64"; // macOS uses arm64 instead of aarch64
-            }
-            return "aarch64";
         }
         return arch;
     }
@@ -160,44 +157,91 @@ class Platform {
 
         String explicitLibraryClassPath = System.getProperty(classPathPropertyNameForLibrary(name));
         final String libName = libraryFilename(name);
-        if (explicitLibraryClassPath != null) {
-            LOGGER.log(Level.FINEST, "Loading native library {0} from explicit classpath at {1}", new Object[]{name, explicitLibraryClassPath});
+        final String sourceLibPath = explicitLibraryClassPath != null
+                ? explicitLibraryClassPath : LIB_PREFIX + "/" + libName;
+        LOGGER.log(Level.FINEST, "Loading native library {0} from {1}", new Object[]{name, sourceLibPath});
+        loadFromExtractionRoots(name, base, sourceLibPath, libName);
+    }
+
+    private static void loadFromExtractionRoots(String name, Class<?> base, String classPath, String libName) {
+        UnsatisfiedLinkError error = new UnsatisfiedLinkError(
+                "Unable to extract/load native library " + name + " from temp, user cache, or ~/.nge.");
+        for (int index = 0; index < 3; index++) {
+            Path directory = null;
+            boolean loaded = false;
             try {
-                final Path tempDirectory = Files.createTempDirectory(name + "-");
-                final Path libPath = tempDirectory.resolve(libName);
-                loadFromClassPath(name, base, explicitLibraryClassPath, tempDirectory, libPath);
+                Path root = extractionRoot(index, name);
+                if (root == null) {
+                    continue;
+                }
+                directory = NativeLibraryExtraction.createDirectory(root, name + "-");
+                loadFromClassPath(name, base, classPath, directory, directory.resolve(libName));
+                loaded = true;
+                LOGGER.log(Level.FINEST, "Loaded native library {0} from {1}", new Object[]{name, directory});
                 return;
-            } catch (IOException e) {
-                throw new LinkageError("Unable to load native library " + name + "!", e);
+            } catch (IOException | UnsatisfiedLinkError | SecurityException | IllegalArgumentException
+                     | UnsupportedOperationException failure) {
+                error.addSuppressed(failure);
+            } finally {
+                if (!loaded && directory != null) {
+                    cleanupExtraction(directory, error);
+                }
             }
         }
+        throw error;
+    }
 
-        final String sourceLibPath = LIB_PREFIX + "/" + libName;
-        LOGGER.log(Level.FINEST, "Loading native library {0} from {1}", new Object[]{name, sourceLibPath});
+    static Path extractionRoot(int index, String name) {
+        if (index == 0) {
+            String tmp = System.getProperty("java.io.tmpdir", "").trim();
+            return tmp.isEmpty() ? null : Path.of(tmp);
+        }
+        String home = System.getProperty("user.home", "").trim();
+        if (home.isEmpty()) {
+            return null;
+        }
+        Path userHome = Path.of(home);
+        if (index == 1) {
+            Path cache;
+            switch (getOS()) {
+                case WINDOWS:
+                    cache = userHome.resolve("AppData/Local");
+                    break;
+                case MACOS:
+                    cache = userHome.resolve("Library/Caches");
+                    break;
+                default:
+                    cache = userHome.resolve(".cache");
+                    break;
+            }
+            return cache.resolve("ngengine").resolve(name);
+        }
+        return userHome.resolve(".nge").resolve(name);
+    }
 
+    private static void cleanupExtraction(Path directory, Throwable failure) {
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(directory)) {
+            for (Path file : files) {
+                Files.deleteIfExists(file);
+            }
+        } catch (IOException | SecurityException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
         try {
-            final Path tempDirectory = Files.createTempDirectory(name + "-");
-            final Path libPath = tempDirectory.resolve(libName);
-            loadFromClassPath(name, base, sourceLibPath, tempDirectory, libPath);
-        } catch (IOException e) {
-            throw new LinkageError("Unable to load native library " + name + "!", e);
+            Files.deleteIfExists(directory);
+        } catch (IOException | SecurityException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
         }
     }
 
     private static void loadFromClassPath(String name, Class<?> base, String classPath, Path tempDirectory, Path fsPath) throws IOException {
         for (String dependency : dependentLibraryFilenames(name)) {
             final String dependencyClassPath = siblingClassPath(classPath, dependency);
-            final Path dependencyPath = tempDirectory.resolve(dependency);
-            copyFromClassPath(name, base, dependencyClassPath, dependencyPath, false);
-            if (Files.exists(dependencyPath)) {
-                System.load(dependencyPath.toString());
-                dependencyPath.toFile().deleteOnExit();
-            }
+            copyFromClassPath(name, base, dependencyClassPath, tempDirectory.resolve(dependency), isMacOS());
         }
-
         copyFromClassPath(name, base, classPath, fsPath, true);
-        System.load(fsPath.toString());
-        fsPath.toFile().deleteOnExit();
+        loadSiblingDependencies(name, tempDirectory);
+        System.load(fsPath.toAbsolutePath().toString());
     }
 
     private static void loadSiblingDependencies(String name, Path directory) {
@@ -207,7 +251,7 @@ class Platform {
         for (String dependency : dependentLibraryFilenames(name)) {
             final Path dependencyPath = directory.resolve(dependency);
             if (Files.exists(dependencyPath)) {
-                System.load(dependencyPath.toString());
+                System.load(dependencyPath.toAbsolutePath().toString());
             }
         }
     }
@@ -229,7 +273,8 @@ class Platform {
                 return;
             }
 
-            Files.copy(libStream, fsPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(libStream, fsPath);
+            fsPath.toFile().deleteOnExit();
         }
     }
 

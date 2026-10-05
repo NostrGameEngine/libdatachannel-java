@@ -48,7 +48,10 @@ if(NOT ANDROID)
     else()
         set_target_properties(${MIMALLOC_BUILD_TARGET} PROPERTIES OUTPUT_NAME "datachannel_mimalloc")
     endif()
-    set_target_properties(${MIMALLOC_BUILD_TARGET} PROPERTIES VERSION "" SOVERSION "")
+    # Empty version strings still add separators to Mach-O install names.
+    # Remove the properties inherited from mimalloc to build an unversioned library.
+    set_property(TARGET ${MIMALLOC_BUILD_TARGET} PROPERTY VERSION)
+    set_property(TARGET ${MIMALLOC_BUILD_TARGET} PROPERTY SOVERSION)
     if(WIN32)
         set(MIMALLOC_RUNTIME_NAME "libdatachannel_mimalloc.dll")
     elseif(APPLE)

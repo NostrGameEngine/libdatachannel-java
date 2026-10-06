@@ -59,7 +59,17 @@ jobs:
         echo "Classifier: ${{ matrix.classifier }}"
 
     - name: Build native library for host
-      run: ./gradlew compileNativeForHost
+      run: ./gradlew :compileNativeForHost :test
+
+    - name: Upload loader test reports
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: loader-tests-${{ matrix.classifier }}
+        path: |
+          build/reports/tests/test/
+          build/test-results/test/
+        if-no-files-found: warn
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v6

@@ -498,8 +498,8 @@ packageNativeAll.configure {
 artifacts.add(iosConfiguration.name, packageNativeForIos)
 
 dependencies {
-    implementation("org.jmonkeyengine:native-loader:0.1.1")
-    implementation("org.jmonkeyengine:native-os:0.1.1")
+    implementation("org.jmonkeyengine:native-loader:0.1.2")
+    implementation("org.jmonkeyengine:native-os:0.1.2")
 
     annotationProcessor(libs.jniAccessGenerator)
     compileOnly(libs.jniAccessGenerator)

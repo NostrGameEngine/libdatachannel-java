@@ -1,0 +1,8 @@
+{
+    global:
+        Java_*;
+        JNI_OnLoad;
+        JNI_OnUnload;
+        get_jni_env_from_jvm;
+    local: *;
+};

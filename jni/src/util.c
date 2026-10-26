@@ -2,7 +2,7 @@
 #include <errno.h>
 #include <jni-c-to-java.h>
 #include <jni-java-to-c.h>
-#if !defined(__ANDROID__)
+#ifdef LIBDATACHANNEL_PRIVATE_ALLOCATOR
 #include <mimalloc.h>
 #endif
 #include <stdio.h>
@@ -72,15 +72,15 @@ JNIEXPORT void JNICALL Java_tel_schich_libdatachannel_LibDataChannel_freeMemory(
 
 JNIEXPORT jstring JNICALL Java_tel_schich_libdatachannel_LibDataChannel_getInnerAllocatorNative(JNIEnv* env, jclass clazz) {
     (void) clazz;
-#if !defined(__ANDROID__)
+#ifdef LIBDATACHANNEL_PRIVATE_ALLOCATOR
     const int mimalloc_version = mi_version();
     const int major = mimalloc_version / 100;
     const int minor = (mimalloc_version / 10) % 10;
     const int patch = mimalloc_version % 10;
     char allocator_name[64];
-    int written = snprintf(allocator_name, sizeof(allocator_name), "mimalloc+%d.%d.%d", major, minor, patch);
+    int written = snprintf(allocator_name, sizeof(allocator_name), "mimalloc-secure+%d.%d.%d", major, minor, patch);
     if (written <= 0 || written >= (int) sizeof(allocator_name)) {
-        return (*env)->NewStringUTF(env, "mimalloc");
+        return (*env)->NewStringUTF(env, "mimalloc-secure");
     }
     return (*env)->NewStringUTF(env, allocator_name);
 #else

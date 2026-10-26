@@ -1,7 +1,6 @@
 #include "global_jvm.h"
 #include "jni-c-to-java.h"
 #include <jni.h>
-#include <pthread.h>
 #include <rtc/rtc.h>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -10,23 +9,8 @@
 #define JNI_VERSION JNI_VERSION_1_6
 
 static JavaVM* global_JVM;
-static pthread_key_t thread_key;
-static pthread_once_t thread_key_once = PTHREAD_ONCE_INIT;
 static volatile jint jvm_unloading = 0;
 static volatile jint jvm_loaded = 0;
-
-void detach_thread();
-
-static void create_thread_key() {
-    pthread_key_create(&thread_key, detach_thread);
-}
-
-void detach_thread() {
-    JavaVM* jvm = pthread_getspecific(thread_key);
-    if (jvm != NULL) {
-        (*jvm)->DetachCurrentThread(jvm);
-    }
-}
 
 JNIEnv* get_jni_env_from_jvm(JavaVM* jvm) {
     JNIEnv* env;
@@ -34,7 +18,10 @@ JNIEnv* get_jni_env_from_jvm(JavaVM* jvm) {
     if (result == JNI_EDETACHED) {
         result = (*jvm)->AttachCurrentThreadAsDaemon(jvm, (void**) &env, NULL);
         if (result == JNI_OK) {
-            pthread_setspecific(thread_key, jvm);
+            if (!register_jni_thread(jvm)) {
+                (*jvm)->DetachCurrentThread(jvm);
+                return NULL;
+            }
         }
     }
     if (result != JNI_OK) {
@@ -62,10 +49,14 @@ void logger_callback(rtcLogLevel level, const char* message) {
 }
 
 static jint initialize_jni(JavaVM* jvm) {
+#ifdef LIBDATACHANNEL_PRIVATE_ALLOCATOR
+    extern int initialize_private_allocator(void);
+    if (!initialize_private_allocator()) return JNI_ERR;
+#endif
     if (jvm_loaded && global_JVM == jvm && !jvm_unloading) {
         return JNI_VERSION;
     }
-    pthread_once(&thread_key_once, create_thread_key);
+    if (!initialize_jni_thread_tracking()) return JNI_ERR;
     global_JVM = jvm;
     jvm_unloading = 0;
     JNIEnv* env = get_jni_env_from_jvm(jvm);
@@ -111,4 +102,5 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* jvm, void* reserved) {
     module_OnUnload(env);
     global_JVM = NULL;
     jvm_loaded = 0;
+    release_jni_thread_tracking();
 }

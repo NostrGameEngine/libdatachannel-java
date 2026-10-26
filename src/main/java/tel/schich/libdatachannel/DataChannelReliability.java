@@ -33,7 +33,7 @@ public class DataChannelReliability {
     }
 
     public DataChannelReliability withUnordered(boolean unordered) {
-        return new DataChannelReliability(unordered, unordered, maxPacketLifeTime, maxRetransmits);
+        return new DataChannelReliability(unordered, unreliable, maxPacketLifeTime, maxRetransmits);
     }
 
     /**
@@ -59,7 +59,7 @@ public class DataChannelReliability {
     }
 
     public DataChannelReliability withMaxPacketLifeTime(Duration maxPacketLifeTime) {
-        return new DataChannelReliability(unordered, unordered, maxPacketLifeTime.toMillis(), maxRetransmits);
+        return new DataChannelReliability(unordered, unreliable, maxPacketLifeTime.toMillis(), maxRetransmits);
     }
 
     /**
@@ -72,6 +72,6 @@ public class DataChannelReliability {
     }
 
     public DataChannelReliability withMaxRetransmits(int maxRetransmits) {
-        return new DataChannelReliability(unordered, unordered, maxPacketLifeTime, maxRetransmits);
+        return new DataChannelReliability(unordered, unreliable, maxPacketLifeTime, maxRetransmits);
     }
 }

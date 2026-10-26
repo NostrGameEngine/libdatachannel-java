@@ -114,7 +114,7 @@ public class PeerConnection implements Closeable {
         }
         String bindAddress = null;
         if (config.bindAddress != null) {
-            bindAddress = config.bindAddress.toString();
+            bindAddress = config.bindAddress.getHostAddress();
         }
         int result = rtcCreatePeerConnection(
                 iceUrisToStrings(config.iceServers),

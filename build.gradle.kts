@@ -6,7 +6,6 @@ import tel.schich.dockcross.execute.RemoteSshRunner
 import tel.schich.dockcross.tasks.DockcrossRunTask
 import java.net.URI
 import java.nio.file.Files
-import java.nio.file.Paths
 
 plugins {
     id("tel.schich.libdatachannel.convention.common")
@@ -31,9 +30,13 @@ fun extractLibDataChannelVersion(): String {
 
 fun produceVersion(): String {
     val libDataChannelVersion = extractLibDataChannelVersion()
-    val hasTags = project.providers.exec {
-        commandLine("git", "tag")
-    }.standardOutput.asText.get().trim().isNotEmpty()
+    val hasTags = try {
+        project.providers.exec {
+            commandLine("git", "tag")
+        }.standardOutput.asText.get().trim().isNotEmpty()
+    } catch (e: Exception) {
+        false
+    }
     val defaultVersion = "$libDataChannelVersion.0-SNAPSHOT"
     if (!hasTags) {
         return defaultVersion
@@ -117,6 +120,42 @@ tasks.compileJava.configure {
     ).map { "-A${it.first}=${it.second}" }
     options.compilerArgs.addAll(annotationProcessorArgs)
     options.headerOutputDirectory = jniPath.dir("generated")
+}
+
+val nativeSourcesArchive = layout.buildDirectory.file("source-archives/libdatachannel-native-sources.zip")
+val packageNativeSources by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Packages the current binding and initialized native source trees with their hashes"
+    dependsOn(tasks.compileJava)
+    outputs.file(nativeSourcesArchive)
+    // Git state and generated JNI inputs must be checked even after a previous archive.
+    outputs.upToDateWhen { false }
+    commandLine("python3", "tools/package_native_sources.py", "--root", projectDir,
+        "--output", nativeSourcesArchive.get().asFile)
+}
+
+val verifyReleaseSources by tasks.registering(Exec::class) {
+    group = "verification"
+    dependsOn(tasks.compileJava)
+    commandLine("python3", "tools/package_native_sources.py", "--root", projectDir,
+        "--check-clean")
+}
+
+allprojects {
+    plugins.withId("maven-publish") {
+        tasks.withType<PublishToMavenRepository>().configureEach {
+            if (!isSnapshot) dependsOn(verifyReleaseSources)
+        }
+        extensions.configure<PublishingExtension> {
+            publications.withType<MavenPublication>().configureEach {
+                artifact(nativeSourcesArchive) {
+                    classifier = "native-sources"
+                    extension = "zip"
+                    builtBy(packageNativeSources)
+                }
+            }
+        }
+    }
 }
 
 val nativeGroup = "native"
@@ -213,9 +252,6 @@ fun Jar.baseConfigure(compileTask: TaskProvider<DockcrossRunTask>, buildOutputDi
         include("native/libdatachannel-java.so")
         include("native/libdatachannel-java.dll")
         include("native/libdatachannel-java.dylib")
-        include("native/libdatachannel_mimalloc*.so")
-        include("native/libdatachannel_mimalloc*.dylib")
-        include("native/libdatachannel_mimalloc*.dll")
         includeEmptyDirs = false
         eachFile {
             val fileName = relativeSourcePath.lastName
@@ -231,8 +267,11 @@ val dockcrossOutputDir: Directory = project.layout.buildDirectory.get().dir("doc
 val nativeForHostOutputDir: Directory = dockcrossOutputDir.dir("host")
 val compileNativeForHost by tasks.registering(DockcrossRunTask::class) {
     baseConfigure(nativeForHostOutputDir, BuildTarget(image = null, family = "host", classifier = "host"))
+    script = listOf(listOf(providers.environmentVariable("LIBDATACHANNEL_BASH").orElse("bash").get(),
+        "../../../../jni/build.sh"))
     unsafeWritableMountSource = true
     runner(NonContainerRunner)
+    extraEnv.put("BUILD_JNI_TESTS", "ON")
 }
 
 val packageNativeForHost by tasks.registering(Jar::class) {
@@ -324,7 +363,12 @@ for (target in targets) {
     val prebuiltPath = project.findProperty("libdatachannel.${target.classifier}.prebuilt-path")
         ?.toString()
         ?.ifBlank { null }
-        ?.let { Paths.get(it).toFile() }
+        ?.let { project.file(it) }
+    val prebuiltNativeFiles = prebuiltPath?.let { path ->
+        project.fileTree(path.parentFile) {
+            include(path.name)
+        }
+    }
 
     val packageTaskName = "packageNativeFor$taskSuffix"
     val packageNative = if (prebuiltPath == null) {
@@ -367,11 +411,7 @@ for (target in targets) {
     } else {
         tasks.register(packageTaskName, Jar::class) {
             group = nativeGroup
-            from(prebuiltPath.parentFile) {
-                include(prebuiltPath.name)
-                include("libdatachannel_mimalloc*.so")
-                include("libdatachannel_mimalloc*.dylib")
-                include("libdatachannel_mimalloc*.dll")
+            from(requireNotNull(prebuiltNativeFiles)) {
                 includeEmptyDirs = false
                 eachFile {
                     val fileName = when (target.family) {
@@ -393,6 +433,14 @@ for (target in targets) {
                 if (!prebuiltPath.exists()) {
                     throw GradleException("Prebuilt binary for $target does not exist: $prebuiltPath")
                 }
+                if (target.family != "macos") {
+                    project.serviceOf<ExecOperations>().exec {
+                        commandLine("cmake", "-DINPUT_FILE=${prebuiltPath.absolutePath}",
+                            "-DPLATFORM=${if (target.family == "windows") "Windows" else "Linux"}",
+                            "-DNM_TOOL=nm", "-DOBJDUMP_TOOL=objdump", "-P",
+                            rootProject.file("jni/cmake/verify_private_dependencies.cmake").absolutePath)
+                    }
+                }
             }
         }
     }
@@ -404,9 +452,14 @@ for (target in targets) {
         packageNative.configure {
             inputs.file(nativeChecker)
             doFirst {
-                val stagedDirectory = prebuiltPath?.parentFile ?: outputDir.dir("native").asFile
                 execOps.exec {
-                    commandLine("python3", nativeChecker.asFile, nativeArchitecture, stagedDirectory)
+                    if (prebuiltPath == null) {
+                        commandLine("python3", nativeChecker.asFile, nativeArchitecture, outputDir.dir("native").asFile)
+                    } else {
+                        commandLine(listOf("python3", nativeChecker.asFile, nativeArchitecture,
+                            prebuiltPath.absoluteFile, "--prebuilt") +
+                            prebuiltNativeFiles!!.files.sortedBy { it.path }.map { it.absolutePath })
+                    }
                 }
             }
             doLast {
@@ -432,7 +485,7 @@ val iosOutputDir: Directory = dockcrossOutputDir.dir("ios")
 val iosPrebuiltPath = project.findProperty("libdatachannel.ios.prebuilt-path")
     ?.toString()
     ?.ifBlank { null }
-    ?.let { Paths.get(it).toFile() }
+    ?.let { project.file(it) }
 val compileNativeForIos by tasks.registering(DockcrossRunTask::class) {
     baseConfigure(
         iosOutputDir,
@@ -457,7 +510,8 @@ val packageNativeForIos by tasks.registering(Jar::class) {
     if (iosPrebuiltPath == null) {
         dependsOn(compileNativeForIos)
         from(iosOutputDir) {
-            include("native/lib/ios/**")
+            include("native/lib/ios/LibDataChannelJava.xcframework/**")
+            include("native/lib/ios/LibDataChannelJava.xcframework.json")
             includeEmptyDirs = false
             eachFile {
                 relativePath = RelativePath.parse(true, relativePath.pathString.removePrefix("native/"))
@@ -467,6 +521,13 @@ val packageNativeForIos by tasks.registering(Jar::class) {
         doFirst {
             if (!iosPrebuiltPath.isDirectory) {
                 throw GradleException("Prebuilt iOS path does not exist or is not a directory: $iosPrebuiltPath")
+            }
+            val metadata = if (iosPrebuiltPath.name.endsWith(".xcframework"))
+                File(iosPrebuiltPath.parentFile, "${iosPrebuiltPath.name}.json")
+            else File(iosPrebuiltPath, "LibDataChannelJava.xcframework.json")
+            if (!metadata.isFile ||
+                (groovy.json.JsonSlurper().parse(metadata) as? Map<*, *>)?.let { it["privateOpenSSL"] == true && it["allocator"] == "platform" && it["privateMimalloc"] != true } != true) {
+                throw GradleException("Prebuilt iOS binding must embed private OpenSSL and use the platform allocator; rebuild its xcframework")
             }
         }
         if (iosPrebuiltPath.name.endsWith(".xcframework")) {
@@ -478,8 +539,8 @@ val packageNativeForIos by tasks.registering(Jar::class) {
             }
         } else {
             from(iosPrebuiltPath) {
-                include("*.xcframework/**")
-                include("*.xcframework.json")
+                include("LibDataChannelJava.xcframework/**")
+                include("LibDataChannelJava.xcframework.json")
                 includeEmptyDirs = false
                 into("lib/ios")
             }
@@ -510,6 +571,18 @@ dependencies {
 
 tasks.test {
     systemProperty("native.test.jar", packageNativeForHost.get().archiveFile.get().asFile.absolutePath)
+    systemProperty("libdatachannel.native.tests", "true")
+    val nativeDirectory = nativeForHostOutputDir.dir("native").asFile
+    val nativeExtension = when {
+        System.getProperty("os.name").lowercase().startsWith("win") -> "dll"
+        System.getProperty("os.name").lowercase().contains("mac") -> "dylib"
+        else -> "so"
+    }
+    val nativeLibrary = nativeDirectory.resolve("libdatachannel-java.$nativeExtension")
+    systemProperty("libdatachannel.native.datachannel-java.path", nativeLibrary.absolutePath)
+    systemProperty("native.test.library.path", nativeLibrary.absolutePath)
+    systemProperty("native.test.probe.path", nativeDirectory.resolve("libdatachannel-java-test-probe.$nativeExtension").absolutePath)
+    systemProperty("native.test.dependency.collision.path", nativeDirectory.resolve("libdatachannel-java-dependency-collision.$nativeExtension").absolutePath)
 }
 
 publishing.publications.withType<MavenPublication>().configureEach {
@@ -565,6 +638,7 @@ tasks.deploy {
 
 val mavenCentralDeploy by tasks.registering(DefaultTask::class) {
     group = "publishing"
+    if (!isSnapshot) dependsOn(verifyReleaseSources)
 
     val repo = if (isSnapshot) {
         Constants.SNAPSHOTS_REPO

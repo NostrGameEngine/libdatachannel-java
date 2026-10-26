@@ -6,7 +6,7 @@ This is a fork of [libdatachannel](https://github.com/paullouisageneau/libdatach
 The fork diverges from the original repository in few key areas:
 
 - Direct ByteBuffer allocation can be wired to a custom allocator
-- Mimalloc (w/ MI_SECURE) for internal allocations on the jni binding side.
+- Private secure mimalloc for desktop JNI, libdatachannel and embedded native dependencies. Android and iOS use the platform allocator.
 - JUL instead of SLF4J for logging.
 
 
@@ -35,7 +35,7 @@ implementation("org.ngengine:libdatachannel-java:0.24.1.nge8")
 implementation("org.ngengine:libdatachannel-java-ios:0.24.1.nge8")
 ```
 
-The iOS module bundles `LibDataChannelJava.xcframework`,
-`LibSSL.xcframework`, and `LibCrypto.xcframework` under `lib/ios`, so
-libJGLIOS can link the correct device or simulator slices from the runtime
-classpath.
+The iOS module bundles `LibDataChannelJava.xcframework` under `lib/ios`,
+including private OpenSSL code, so libJGLIOS can link the correct device or
+simulator slice from the runtime classpath. Separate OpenSSL frameworks are
+not required.

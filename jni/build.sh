@@ -4,6 +4,11 @@ set -euo pipefail
 
 set -x
 
+# Windows Gradle supplies native paths; forward slashes also work in MSYS2 and Conan.
+OUTPUT_DIR="${OUTPUT_DIR//\\//}"
+MOUNT_SOURCE="${MOUNT_SOURCE//\\//}"
+RELATIVE_PROJECT_PATH="${RELATIVE_PROJECT_PATH//\\//}"
+
 export CONAN_HOME="${OUTPUT_DIR}/conan/home"
 # OpenSSL's makefile constructs broken compiler paths due to CROSS_COMPILE
 export CROSS_COMPILE=""
@@ -74,6 +79,11 @@ find_conan_package_folder() {
 
   local package_folder
   package_folder="$(sed -nE "s/^set\\(${variable_prefix}_PACKAGE_FOLDER_[^ ]* \"([^\"]+)\"\\).*$/\\1/p" "$data_file" | head -n 1)"
+  case "$package_folder" in
+    '${CMAKE_CURRENT_LIST_DIR}/'*)
+      package_folder="${conan_install_dir}/${package_folder#'${CMAKE_CURRENT_LIST_DIR}/'}"
+      ;;
+  esac
   if [ -z "$package_folder" ] || [ ! -d "$package_folder" ]
   then
     echo "Unable to resolve ${file_prefix} package folder from ${data_file}" >&2
@@ -92,20 +102,6 @@ create_ios_xcframework() {
     -framework "${OUTPUT_DIR}/ios/ios-arm64/${framework_name}.framework" \
     -framework "${OUTPUT_DIR}/ios/ios-arm64-simulator/${framework_name}.framework" \
     -output "$xcframework_dir"
-}
-
-write_ios_xcframework_metadata() {
-  local framework_name=$1
-  local force_load=$2
-  local metadata_file="${OUTPUT_DIR}/lib/ios/${framework_name}.xcframework.json"
-
-  cat > "$metadata_file" <<EOF
-{
-  "name": "${framework_name}",
-  "embed": false,
-  "forceLoad": ${force_load}
-}
-EOF
 }
 
 write_libdatachannel_ios_xcframework_metadata() {
@@ -214,12 +210,21 @@ build_ios_slice() {
     -DBUILD_SHARED_LIBS=OFF
   cmake --build "$build_dir" --target datachannel-java-ios-archive --parallel "${JOBS:-1}"
 
-  copy_ios_framework_slice "$slice_root" "$framework_name" "${build_dir}/${framework_name}" "$min_ios_version"
-
   local openssl_package_dir
   openssl_package_dir="$(find_conan_package_folder "$conan_install_dir" 'OpenSSL' 'openssl')"
-  copy_ios_framework_slice "$slice_root" 'LibSSL' "${openssl_package_dir}/lib/libssl.a" "$min_ios_version"
-  copy_ios_framework_slice "$slice_root" 'LibCrypto' "${openssl_package_dir}/lib/libcrypto.a" "$min_ios_version"
+  # A relocatable link resolves the private static dependency graph, then makes
+  # implementation symbols private before the app's final link.
+  xcrun --sdk "$sdk" clang++ -target "$target_triple" -isysroot "$sdk_path" \
+    -r -nostdlib \
+    "-Wl,-force_load,${build_dir}/${framework_name}" \
+    "-Wl,-exported_symbols_list,${MOUNT_SOURCE}/jni/cmake/jni.exports.apple" \
+    "${openssl_package_dir}/lib/libssl.a" "${openssl_package_dir}/lib/libcrypto.a" \
+    -o "${slice_root}/private-binding.o"
+  xcrun libtool -static -o "${slice_root}/${framework_name}" "${slice_root}/private-binding.o"
+  cmake -DINPUT_FILE="${slice_root}/${framework_name}" -DPLATFORM=iOS -DSTATIC_ARCHIVE=ON \
+    -DNM_TOOL="$(xcrun --find nm)" \
+    -P "${MOUNT_SOURCE}/jni/cmake/verify_private_dependencies.cmake"
+  copy_ios_framework_slice "$slice_root" "$framework_name" "${slice_root}/${framework_name}" "$min_ios_version"
 }
 
 if [ "$TARGET_FAMILY" = 'ios' ]
@@ -230,11 +235,7 @@ then
   build_ios_slice 'iphonesimulator' 'iphonesimulator' "arm64-apple-ios${min_ios_version}-simulator" 'ios-arm64-simulator' "$min_ios_version"
 
   create_ios_xcframework 'LibDataChannelJava'
-  create_ios_xcframework 'LibSSL'
-  create_ios_xcframework 'LibCrypto'
   write_libdatachannel_ios_xcframework_metadata
-  write_ios_xcframework_metadata 'LibSSL' true
-  write_ios_xcframework_metadata 'LibCrypto' true
   exit 0
 fi
 
@@ -258,6 +259,7 @@ cmake_options=(
   "-DPROJECT_VERSION=${PROJECT_VERSION}"
   "-DCMAKE_BUILD_TYPE=${PROJECT_BUILD_TYPE}"
   "-DENABLE_HARDENING=${ENABLE_HARDENING:-ON}"
+  "-DBUILD_JNI_TESTS=${BUILD_JNI_TESTS:-OFF}"
 )
 
 if [ "$TARGET_FAMILY" = 'android' ]
@@ -277,4 +279,4 @@ then
 fi
 
 cmake "$RELATIVE_PROJECT_PATH" "${cmake_options[@]}"
-make -j"${JOBS:-1}"
+cmake --build . --parallel "${JOBS:-1}"

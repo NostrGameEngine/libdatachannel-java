@@ -106,15 +106,15 @@ class NativeDirectoryIntegrationTest {
     }
 
     @Test
-    void mapsWindowsClassifierNamesToLogicalSystemNames() {
+    void mapsPlatformClassifierNamesToLogicalSystemNames() {
         String previous = System.getProperty("os.name");
         try {
             System.setProperty("os.name", "Windows 11");
             assertEquals("libdatachannel-java.dll", Platform.libraryFilename(LibDataChannel.LIB_NAME));
             assertEquals("datachannel-java", Platform.systemLibraryName("libdatachannel-java"));
-            assertEquals("datachannel_mimalloc", Platform.systemLibraryName("libdatachannel_mimalloc"));
             System.setProperty("os.name", "Darwin");
             assertEquals("datachannel-java", Platform.systemLibraryName("datachannel-java"));
+            System.setProperty("os.name", "Linux");
         } finally {
             System.setProperty("os.name", previous);
         }

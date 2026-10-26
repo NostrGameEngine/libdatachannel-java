@@ -14,3 +14,13 @@ include("ios")
 project(":ios").name = "libdatachannel-java-ios"
 
 includeBuild("example/java")
+
+providers.gradleProperty("nativeBootstrapDir").orNull?.let { sourceDirectory ->
+    includeBuild(sourceDirectory) {
+        dependencySubstitution {
+            for (moduleName in listOf("native-common", "native-directories", "native-loader", "native-os")) {
+                substitute(module("org.jmonkeyengine:$moduleName")).using(project(":$moduleName"))
+            }
+        }
+    }
+}

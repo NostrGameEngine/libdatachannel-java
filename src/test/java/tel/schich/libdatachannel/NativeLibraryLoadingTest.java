@@ -11,6 +11,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.ConsoleHandler;
@@ -27,10 +28,49 @@ class NativeLibraryLoadingTest {
     @TempDir Path root;
 
     @Test
-    void loadsFromFreshTempAndCleansUpAtExit() throws Exception {
+    void classifierBundlesOnlyJni() throws Exception {
+        try (JarFile jar = new JarFile(System.getProperty("native.test.jar"))) {
+            List<String> binaries = new ArrayList<>();
+            jar.stream().filter(entry -> !entry.isDirectory() && entry.getName().startsWith("native/"))
+                    .forEach(entry -> binaries.add(entry.getName()));
+            assertEquals(List.of("native/" + Platform.libraryFilename(LibDataChannel.LIB_NAME)), binaries);
+        }
+    }
+
+    @Test
+    void keepsDependenciesPrivateWhenForeignSymbolsAreLoadedFirst() throws Exception {
+        assertPrivateDependencies("before");
+    }
+
+    @Test
+    void keepsDependenciesPrivateWhenForeignSymbolsAreLoadedAfterwards() throws Exception {
+        assertPrivateDependencies("after");
+    }
+
+    private void assertPrivateDependencies(String order) throws Exception {
+        Path temp = Files.createDirectory(root.resolve("temp"));
+        String output = runProbe(temp, root, null, 0, Path.of(System.getProperty("native.test.jar")),
+                "-Dnative.test.foreign.dependencies=" + order,
+                "-Dnative.test.probe.path=" + System.getProperty("native.test.probe.path"),
+                "-Dnative.test.dependency.collision.path=" + System.getProperty("native.test.dependency.collision.path"));
+        assertTrue(output.contains("PRIVATE_DEPENDENCIES_OK"), output);
+    }
+
+    @Test
+    void loadsFromFreshTempAndReleasesExtractedLibrariesAtExit() throws Exception {
         Path temp = Files.createDirectory(root.resolve("temp"));
         String output = runProbe(temp, root, null, 0);
         assertTrue(output.contains(temp.toRealPath().toString()), output);
+        if (Platform.isWindows()) {
+            // Mapped DLLs are locked during DeleteOnExit. The exited child must
+            // release them so the parent can remove its extraction fixture.
+            Path[] remaining;
+            try (var paths = Files.walk(temp)) {
+                remaining = paths.filter(path -> !path.equals(temp))
+                        .sorted(Comparator.reverseOrder()).toArray(Path[]::new);
+            }
+            for (Path path : remaining) Files.delete(path);
+        }
         try (var children = Files.list(temp)) {
             assertEquals(0, children.count(), output);
         }
@@ -80,8 +120,14 @@ class NativeLibraryLoadingTest {
     @Test
     void loadsWithoutMountMetadataOrUserNameLookup() throws Exception {
         Path temp = Files.createDirectory(root.resolve("temp"));
+        List<String> options = new ArrayList<>();
+        if (Runtime.version().feature() >= 18) {
+            options.add("-Djava.security.manager=allow");
+        }
+        options.add("-Dnative.test.deny-filestore=true");
+        options.add("-Duser.name=?");
         String output = runProbe(temp, root, null, 0, Path.of(System.getProperty("native.test.jar")),
-                "-Djava.security.manager=allow", "-Dnative.test.deny-filestore=true", "-Duser.name=?");
+                options.toArray(new String[0]));
         assertTrue(output.contains(temp.toRealPath().toString()), output);
     }
 
@@ -117,32 +163,13 @@ class NativeLibraryLoadingTest {
     }
 
     @Test
-    void rejectsMacClassifierWithoutAllocatorBeforeLoadingJni() throws Exception {
-        assumeTrue(Platform.isMacOS());
-        Path incomplete = root.resolve("incomplete.jar");
-        String resource = "native/" + Platform.libraryFilename(LibDataChannel.LIB_NAME);
-        try (JarFile original = new JarFile(System.getProperty("native.test.jar"));
-             ZipOutputStream archive = new ZipOutputStream(Files.newOutputStream(incomplete))) {
-            archive.putNextEntry(new ZipEntry(resource));
-            try (var input = original.getInputStream(original.getJarEntry(resource))) {
-                input.transferTo(archive);
-            }
-            archive.closeEntry();
-        }
-        Path temp = Files.createDirectory(root.resolve("temp"));
-        String output = runProbe(temp, root, null, 1, incomplete);
-        assertTrue(output.contains("datachannel_mimalloc"), output);
-        try (var children = Files.list(temp)) {
-            assertEquals(0, children.count(), output);
-        }
-    }
-
-    @Test
     void fallsBackToSystemLibrariesWhenClasspathResourcesAreAbsent() throws Exception {
         Path blocked = Files.write(root.resolve("blocked"), new byte[]{1});
         Path system = systemLibraries();
-        String output = runProbe(blocked, blocked, null, 0, null, "-Djava.library.path=" + system);
+        String output = runProbe(blocked, blocked, null, 0, null, "-Djava.library.path=" + system,
+                "-Dnative.test.expected-library-dir=" + system);
         assertTrue(output.contains("from library path"), output);
+        if (Platform.isLinux()) assertTrue(output.contains("RELOCATED_NATIVE_OK"), output);
     }
 
     @Test
@@ -170,9 +197,11 @@ class NativeLibraryLoadingTest {
     }
 
     @Test
-    void preservesExplicitNativePathAndSiblingAllocator() throws Exception {
+    void preservesExplicitNativePathWithoutLoadingLegacyAllocator() throws Exception {
         Path blocked = Files.write(root.resolve("blocked"), new byte[]{1});
         Path system = systemLibraries();
+        String extension = Platform.isWindows() ? ".dll" : Platform.isMacOS() ? ".dylib" : ".so";
+        Files.writeString(system.resolve("libdatachannel_mimalloc" + extension), "Unselected legacy allocator");
         runProbe(blocked, blocked, null, 0, null,
                 "-Dlibdatachannel.native.datachannel-java.path=" + system.resolve(Platform.libraryFilename(LibDataChannel.LIB_NAME)),
                 "-Dnatives.withOsLibraries=false");
@@ -217,7 +246,9 @@ class NativeLibraryLoadingTest {
     private String runProbe(Path temp, Path home, String classPathOverride, int expectedExit, Path nativeJar, String... vmOptions) throws Exception {
         // Gradle workers use their own classloader; construct the child classpath explicitly.
         List<String> classPath = new ArrayList<>();
-        for (Class<?> type : List.of(LibDataChannel.class, Probe.class, NativeLoader.class, NativeDirectories.class, OperatingSystem.class, OperatingSystems.class)) {
+        for (Class<?> type : List.of(LibDataChannel.class, Probe.class, NativeLoader.class, NativeDirectories.class,
+                OperatingSystem.class, OperatingSystems.class, org.junit.jupiter.api.Assertions.class,
+                org.opentest4j.AssertionFailedError.class, org.junit.platform.commons.util.Preconditions.class)) {
             classPath.add(Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).toString());
         }
         if (nativeJar != null) classPath.add(nativeJar.toString());
@@ -247,7 +278,26 @@ class NativeLibraryLoadingTest {
     }
 
     public static class Probe {
-        public static void main(String[] args) {
+        private static native long loadForeignLibrary(String library);
+        private static native long foreignDependencyCheck(long handle, String check);
+
+        private static void checkForeignDependencies(long handle) {
+            if (foreignDependencyCheck(handle, "foreign_crypto_self_check") != 0x7eed0001L
+                    || foreignDependencyCheck(handle, "foreign_allocator_self_check") != 0x7eed0002L) {
+                throw new IllegalStateException("Foreign dependency implementation was replaced");
+            }
+        }
+
+        public static void main(String[] args) throws Exception {
+            String dependencyOrder = System.getProperty("native.test.foreign.dependencies");
+            long foreignLibrary = 0;
+            if (dependencyOrder != null) {
+                System.load(System.getProperty("native.test.probe.path"));
+                if (dependencyOrder.equals("before")) {
+                    foreignLibrary = loadForeignLibrary(System.getProperty("native.test.dependency.collision.path"));
+                    checkForeignDependencies(foreignLibrary);
+                }
+            }
             if (Boolean.getBoolean("native.test.android")) {
                 System.setProperty("java.runtime.name", "Android Runtime");
                 System.setProperty("java.vm.name", "Dalvik");
@@ -270,6 +320,31 @@ class NativeLibraryLoadingTest {
             LibDataChannel.initialize();
             try (PeerConnection peer = PeerConnection.createPeer(PeerConnectionConfiguration.DEFAULT)) {
                 System.out.println("NATIVE_OK " + LibDataChannel.getInnerAllocator());
+            }
+            if (dependencyOrder != null) {
+                if (dependencyOrder.equals("after"))
+                    foreignLibrary = loadForeignLibrary(System.getProperty("native.test.dependency.collision.path"));
+                checkForeignDependencies(foreignLibrary);
+                // Repeated peer teardown exercises JNI allocation/free across callbacks
+                // while a global library owns the same OpenSSL and mimalloc names.
+                for (int cycle = 0; cycle < 3; ++cycle) {
+                    new PeerConnectionBindAddressTest().explicitIpv4BindingTransfersOrderedBytesBothWays();
+                    checkForeignDependencies(foreignLibrary);
+                }
+                System.out.println("PRIVATE_DEPENDENCIES_OK " + dependencyOrder);
+            }
+            String expectedDirectory = System.getProperty("native.test.expected-library-dir");
+            if (Platform.isLinux() && expectedDirectory != null) {
+                Path directory = Path.of(expectedDirectory).toRealPath();
+                List<String> mappings = Files.readAllLines(Path.of("/proc/self/maps"));
+                for (String name : List.of("libdatachannel-java.so")) {
+                    Path library = directory.resolve(name);
+                    String suffix = " " + library.toRealPath();
+                    if (mappings.stream().noneMatch(line -> line.endsWith(suffix))) {
+                        throw new IllegalStateException("Native dependency loaded outside installation: " + library);
+                    }
+                }
+                System.out.println("RELOCATED_NATIVE_OK " + directory);
             }
         }
     }

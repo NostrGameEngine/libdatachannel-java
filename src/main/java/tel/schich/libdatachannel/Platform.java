@@ -6,9 +6,7 @@ import com.jme3.nativebootstrap.loader.NativeLoader;
 import com.jme3.nativebootstrap.loader.NativeResource;
 import com.jme3.nativebootstrap.os.OperatingSystems;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Level;
@@ -56,7 +54,6 @@ class Platform {
         String explicitLibraryPath = System.getProperty(PATH_PROP_PREFIX + name.toLowerCase(Locale.ROOT) + PATH_PROP_FS_PATH);
         if (explicitLibraryPath != null) {
             LOGGER.log(Level.FINEST, "Loading native library {0} from {1}", new Object[]{name, explicitLibraryPath});
-            loadSiblingDependencies(name, Path.of(explicitLibraryPath).getParent());
             System.load(explicitLibraryPath);
             return;
         }
@@ -116,29 +113,12 @@ class Platform {
         return libName + ".so";
     }
 
-    private static List<String> dependentLibraryFilenames(String name) {
-        if (!LibDataChannel.LIB_NAME.equals(name)) return List.of();
-        switch (getOS()) {
-            case WINDOWS: return List.of("libdatachannel_mimalloc.dll");
-            case MACOS: return List.of("libdatachannel_mimalloc.dylib");
-            case LINUX: return List.of("libdatachannel_mimalloc.so");
-            default: return List.of();
-        }
-    }
-
     private static void loadFromExtractionRoots(String name, Class<?> base, String classPath) {
         String source = absoluteClassPath(base, classPath);
-        List<NativeResource> binaries = new ArrayList<>();
-        for (String dependency : dependentLibraryFilenames(name)) {
-            String dependencyPath = siblingClassPath(source, dependency);
-            // Some Linux/Windows packages link the allocator statically; macOS needs its sibling dylib.
-            if (base.getResource(dependencyPath) == null && !isMacOS()) continue;
-            binaries.add(NativeResource.fromClasspath(base, dependencyPath));
-        }
-        binaries.add(NativeResource.fromClasspath(base, source));
         Path directory = new NativeLoader(path -> System.load(path.toString()),
                 library -> System.loadLibrary(systemLibraryName(library))).load(
-                NativeDirectories.candidates(name, Platform::getOS), binaries);
+                NativeDirectories.candidates(name, Platform::getOS),
+                List.of(NativeResource.fromClasspath(base, source)));
         if (directory == null) {
             LOGGER.log(Level.FINEST, "Loaded native library {0} from library path", name);
         } else {
@@ -153,28 +133,9 @@ class Platform {
     }
 
     static String systemLibraryName(String name) {
-        // Windows classifiers use lib-prefixed DLLs, unlike System.mapLibraryName.
-        return isWindows() && name.startsWith("lib") ? name.substring(3) : name;
-    }
-
-    private static void loadSiblingDependencies(String name, Path directory) {
-        if (directory == null) {
-            return;
-        }
-        for (String dependency : dependentLibraryFilenames(name)) {
-            final Path dependencyPath = directory.resolve(dependency);
-            if (Files.exists(dependencyPath)) {
-                System.load(dependencyPath.toAbsolutePath().toString());
-            }
-        }
-    }
-
-    private static String siblingClassPath(String classPath, String fileName) {
-        final int slashIndex = classPath.lastIndexOf('/');
-        if (slashIndex < 0) {
-            return fileName;
-        }
-        return classPath.substring(0, slashIndex + 1) + fileName;
+        OperatingSystem os = getOS();
+        // Keep the JNI library's existing logical Windows name.
+        return os == OperatingSystem.WINDOWS && name.startsWith("lib") ? name.substring(3) : name;
     }
 
 }

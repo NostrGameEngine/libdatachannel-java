@@ -43,6 +43,12 @@ repositories {
     mavenLocal()
 }
 
+tasks.withType<Jar>().configureEach {
+    from(rootProject.file("LICENSE")) { into("META-INF/licenses/libdatachannel-java") }
+    from(rootProject.file("licenses")) { into("META-INF/licenses") }
+    from(rootProject.file("SOURCE-NOTICES.txt")) { into("META-INF") }
+}
+
 dependencies {
     compileOnly(libs.jdtAnnotations)
 
@@ -73,11 +79,11 @@ publishing {
             pom {
                 name = artifactId
                 description = project.description
-                url = "https://github.com/pschichtel/libdatachannel-java"
+                url = "https://github.com/NostrGameEngine/libdatachannel-java"
                 licenses {
                     license {
-                        name = "MIT"
-                        url = "https://opensource.org/licenses/MIT"
+                        name = "Mozilla Public License 2.0"
+                        url = "https://www.mozilla.org/en-US/MPL/2.0/"
                     }
                 }
                 developers {
@@ -91,9 +97,9 @@ publishing {
                     }
                 }
                 scm {
-                    url.set("https://github.com/pschichtel/libdatachannel-java")
-                    connection.set("scm:git:https://github.com/pschichtel/libdatachannel-java")
-                    developerConnection.set("scm:git:git@github.com:pschichtel/libdatachannel-java")
+                    url.set("https://github.com/NostrGameEngine/libdatachannel-java")
+                    connection.set("scm:git:https://github.com/NostrGameEngine/libdatachannel-java.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/NostrGameEngine/libdatachannel-java.git")
                 }
             }
         }

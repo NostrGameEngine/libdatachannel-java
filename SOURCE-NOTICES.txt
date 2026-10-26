@@ -1,0 +1,54 @@
+libdatachannel-java and native dependency notices
+
+The binding's root LICENSE is Mozilla Public License 2.0. Maven metadata
+describes that license. Third-party libraries retain their individual licenses,
+copied without alteration under META-INF/licenses in the published JARs.
+
+Binding: https://github.com/NostrGameEngine/libdatachannel-java
+Derived from the original Java binding by Phillip Schichtel and contributors:
+https://github.com/pschichtel/libdatachannel-java
+The binding retains the original MPL-2.0 license.
+
+The native-sources artifact contains the binding and initialized native source
+submodules. SOURCE-REVISIONS.json records their revisions and exact file hashes.
+
+libdatachannel: https://github.com/paullouisageneau/libdatachannel
+MPL-2.0, official v0.24.6 at 6b1e2e620f1e37f0eafeee702eaea0043cb305fd.
+Its nested submodules pin libjuice (MPL-2.0), usrsctp (BSD), plog (MIT),
+nlohmann/json (MIT), and libsrtp (BSD). Those source trees and their license
+files are included in the native-sources artifact, with exact revisions.
+
+mimalloc: https://github.com/microsoft/mimalloc/tree/v2.5.2
+MIT, version 2.5.2. CMake verifies the SHA-256 digest of the official tag archive. The JNI build selects
+secure mode and embeds the static allocator with private symbols on desktop.
+JNI, libdatachannel, libjuice, usrsctp and private OpenSSL use this heap. Process
+allocator overrides and Windows CRT redirection remain disabled. Android and iOS
+use their platform allocators and do not incorporate mimalloc. No shared mimalloc
+sidecar is distributed.
+
+LLVM libc++ and libc++abi: https://github.com/llvm/llvm-project/tree/llvmorg-20.1.8
+Apache-2.0 with LLVM exceptions and the additional notices in their LICENSE.TXT
+files. macOS desktop builds embed private static runtimes. The build recipe pins
+the official 20.1.8 release archives and verifies each SHA-256 digest, including
+the LLVM CMake build modules. No LLVM compiler is built or distributed.
+
+GNU C++ runtime: https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+GPL-3.0 with GCC Runtime Library Exception 3.1. Linux and MinGW desktop builds
+embed their toolchain's static runtime, with implementation symbols kept private.
+The runtime exception permits distribution with independently licensed modules.
+
+Winpthreads: https://github.com/mingw-w64/mingw-w64/tree/master/mingw-w64-libraries/winpthreads
+MIT and BSD notices in COPYING, reproduced in licenses/winpthreads-MIT-BSD.txt.
+MinGW Windows builds embed the toolchain's static POSIX thread runtime.
+
+OpenSSL: https://github.com/openssl/openssl/tree/openssl-3.6.0
+Apache-2.0, version 3.6.0 from the pinned Conan recipe. The Conan package records
+the official release source archive and its digest. All platforms embed OpenSSL
+statically with private symbols. No libssl/libcrypto shared libraries or
+separate OpenSSL xcframeworks are distributed in the classifiers.
+
+Native Bootstrap: https://github.com/jMonkeyEngine/native-bootstrap
+MIT, org.jmonkeyengine:native-loader and native-os version 0.1.2, with their
+transitive modules. These Java libraries remain external Maven dependencies.
+
+Build dependencies and platform tools retain their own licenses.

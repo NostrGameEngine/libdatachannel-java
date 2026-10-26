@@ -1,0 +1,75 @@
+Native source build
+
+The native-sources ZIP contains the binding, initialized native submodules,
+generated JNI sources, build scripts and dependency notices. SOURCE-REVISIONS.json
+records the checkout revisions, whether each source tree was modified, and the
+SHA-256 digest of every included source file. Local archives include current
+tracked changes and non-ignored new source files. Release deployment requires
+clean committed repositories.
+
+Install a Java 21 JDK and Python 3.9 or newer. Create a Python virtual environment
+and install tools/native-build-requirements.txt. Add its bin directory (Scripts
+on Windows) to PATH.
+Run ./gradlew test to build and exercise the host JNI library, including native
+callback thread lifetime and bidirectional IPv4/IPv6 ICE tests. Windows host
+builds use the MinGW toolchain through MSYS2. In an MSYS2 MINGW64 shell with gcc,
+make and perl installed, select its shell and native compiler before Gradle:
+
+export LIBDATACHANNEL_BASH="$(cygpath -m /usr/bin/bash.exe)"
+export CC=gcc CXX=g++ CMAKE_GENERATOR="MinGW Makefiles"
+./gradlew test
+
+Host and desktop classifiers contain one JNI library with private static OpenSSL
+and mimalloc. Native Bootstrap loads that single resource; no allocator sidecar
+or dependent-DLL preload is required. Other platform classifiers are built
+through the targets in build.gradle.kts and .github/workflows/gradle.yml.
+
+libdatachannel is pinned to official release v0.24.6 at
+6b1e2e620f1e37f0eafeee702eaea0043cb305fd. No local DTLS queue patch is applied.
+The submodule tree includes its own exact dependency source revisions.
+jni/conanfile.py specifies the OpenSSL dependency. jni/CMakeLists.txt specifies
+mimalloc and the private allocator build settings. Conan and CMake retrieve
+those dependencies from their declared upstream sources when absent locally.
+
+OpenSSL is linked statically into JNI on every platform; desktop builds also
+embed secure mimalloc statically without exporting allocator symbols. Only JNI entry points
+are exported; OpenSSL and libdatachannel implementation symbols stay private.
+Desktop classifiers contain JNI only, with no shared libssl/libcrypto/mimalloc.
+JNI, libdatachannel, libjuice and usrsctp use the private allocator for C heap
+requests and C++ new/delete, including internal message buffers. OpenSSL's memory
+callbacks are installed before its initialization and must succeed. C++ runtimes
+are embedded privately too, so strings, streams and other out-of-line runtime
+operations allocate and release within the same heap. macOS builds the static
+LLVM libc++/libc++abi 20.1.8 runtime from SHA-256-verified official source archives;
+Linux and MinGW use their toolchain's static GNU C++ runtime. Mimalloc is compiled
+as C++ so failed throwing new calls preserve std::bad_alloc semantics. Implementation
+symbols are localized by the JNI export allow-list; no process allocator hooks,
+DYLD interposition, malloc-zone replacement or Windows CRT redirection are enabled.
+MinGW static-runtime C allocation calls and import-address references resolve
+to private definitions at link time; the process CRT is not patched or hooked.
+The Java setAllocator callback retains ownership of application-facing buffers.
+Platform API results keep their corresponding platform release functions.
+Linux uses mimalloc's local-dynamic thread-local storage mode so JNI can be
+loaded after JVM startup without relying on reserved static TLS space.
+OpenSSL is built without dynamic modules, engines or automatic openssl.cnf
+loading, keeping this copy independent of other OpenSSL users in the process.
+TLS/DTLS and their default algorithms remain enabled. The linker selects needed
+archive members and discards unused sections where supported.
+
+iOS and Android do not compile or link mimalloc; native C/C++ heap requests use
+the platform allocator. getInnerAllocator reports passthrough on these platforms.
+iOS packages one LibDataChannelJava xcframework containing JNI, libdatachannel
+and OpenSSL. A relocatable link makes implementation definitions
+local or private before packaging the static archive. LibSSL/LibCrypto xcframeworks are not
+required. Prebuilt iOS metadata must declare privateOpenSSL=true and allocator=platform; older prebuilts
+must be rebuilt. Dependency licenses and corresponding-source notices still
+apply to code incorporated statically.
+
+For a Git checkout, initialize submodules recursively before building. A source
+archive already contains their files and can build without Git metadata. Creating
+a new revision manifest or publishing release sources requires a Git checkout.
+
+To exercise a local Native Bootstrap checkout, add
+-PnativeBootstrapDir=/absolute/path/to/native-bootstrap to the Gradle command.
+This substitutes all four Bootstrap modules from source for local verification;
+ordinary consumers continue resolving the published dependency coordinates.

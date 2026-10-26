@@ -117,6 +117,8 @@ write_libdatachannel_ios_xcframework_metadata() {
   "name": "${framework_name}",
   "embed": false,
   "forceLoad": true,
+  "privateOpenSSL": true,
+  "allocator": "platform",
   "systemFrameworks": [
     "Security"
   ]

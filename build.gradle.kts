@@ -265,6 +265,8 @@ fun Jar.baseConfigure(compileTask: TaskProvider<DockcrossRunTask>, buildOutputDi
 
 val dockcrossOutputDir: Directory = project.layout.buildDirectory.get().dir("dockcross")
 val nativeForHostOutputDir: Directory = dockcrossOutputDir.dir("host")
+val allocatorDiagnosticsEnabled = providers.gradleProperty("nativeAllocatorDiagnostics")
+    .map { it.toBooleanStrict() }.orElse(false)
 val compileNativeForHost by tasks.registering(DockcrossRunTask::class) {
     baseConfigure(nativeForHostOutputDir, BuildTarget(image = null, family = "host", classifier = "host"))
     script = listOf(listOf(providers.environmentVariable("LIBDATACHANNEL_BASH").orElse("bash").get(),
@@ -272,6 +274,8 @@ val compileNativeForHost by tasks.registering(DockcrossRunTask::class) {
     unsafeWritableMountSource = true
     runner(NonContainerRunner)
     extraEnv.put("BUILD_JNI_TESTS", "ON")
+    extraEnv.put("ALLOCATOR_DIAGNOSTICS", if (allocatorDiagnosticsEnabled.get()) "ON" else "OFF")
+    inputs.property("allocatorDiagnostics", allocatorDiagnosticsEnabled)
 }
 
 val packageNativeForHost by tasks.registering(Jar::class) {
@@ -569,7 +573,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-tasks.test {
+fun Test.configureNativeTests() {
     systemProperty("native.test.jar", packageNativeForHost.get().archiveFile.get().asFile.absolutePath)
     systemProperty("libdatachannel.native.tests", "true")
     val nativeDirectory = nativeForHostOutputDir.dir("native").asFile
@@ -583,6 +587,30 @@ tasks.test {
     systemProperty("native.test.library.path", nativeLibrary.absolutePath)
     systemProperty("native.test.probe.path", nativeDirectory.resolve("libdatachannel-java-test-probe.$nativeExtension").absolutePath)
     systemProperty("native.test.dependency.collision.path", nativeDirectory.resolve("libdatachannel-java-dependency-collision.$nativeExtension").absolutePath)
+}
+
+tasks.test {
+    configureNativeTests()
+    exclude("**/NativeAllocatorDiagnosticsTest*")
+}
+
+tasks.register<Test>("nativeAllocatorDiagnostics") {
+    group = "verification"
+    description = "Audit private native allocation ownership during real desktop transfers"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    configureNativeTests()
+    include("**/NativeAllocatorDiagnosticsTest.class")
+    val reportsDirectory = layout.buildDirectory.dir("reports/allocator-diagnostics")
+    systemProperty("native.test.classpath", sourceSets.test.get().runtimeClasspath.asPath)
+    systemProperty("native.test.allocator.reports", reportsDirectory.get().asFile.absolutePath)
+    outputs.dir(reportsDirectory)
+    doFirst {
+        check(allocatorDiagnosticsEnabled.get()) {
+            "Use -PnativeAllocatorDiagnostics=true to build the CI allocator instrumentation"
+        }
+    }
 }
 
 publishing.publications.withType<MavenPublication>().configureEach {

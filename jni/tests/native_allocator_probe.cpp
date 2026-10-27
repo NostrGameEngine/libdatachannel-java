@@ -3,6 +3,7 @@
 #include <openssl/crypto.h>
 #include <rtc/message.hpp>
 #include <functional>
+#include <iomanip>
 #include <memory>
 #include <new>
 #include <limits>
@@ -20,9 +21,11 @@ Java_tel_schich_libdatachannel_NativeAllocatorTest_allocationCoverage(JNIEnv* en
     try {
         int result = 0;
         if (datachannel_java_allocator_probe()) result |= 1;
-        auto scalar = std::make_unique<unsigned char[]>(8192);
+        auto scalar = std::make_unique<unsigned char>();
+        auto array = std::make_unique<unsigned char[]>(8192);
         auto aligned = ::operator new(4096, std::align_val_t(128), std::nothrow);
-        if (scalar && aligned && mi_is_in_heap_region(scalar.get()) && mi_is_in_heap_region(aligned)) result |= 2;
+        if (scalar && array && aligned && mi_is_in_heap_region(scalar.get()) &&
+            mi_is_in_heap_region(array.get()) && mi_is_in_heap_region(aligned)) result |= 2;
         ::operator delete(aligned, std::align_val_t(128), std::nothrow);
         auto message = rtc::make_message(65536);
         if (mi_is_in_heap_region(message.get()) && mi_is_in_heap_region(message->data())) result |= 4;
@@ -35,7 +38,14 @@ Java_tel_schich_libdatachannel_NativeAllocatorTest_allocationCoverage(JNIEnv* en
         owned = owned && mi_is_in_heap_region(text.data()) && mi_is_in_heap_region(copies.data()) && mi_is_in_heap_region(copies[0].data());
         auto shared = std::make_shared<std::string>(copies[0]);
         std::function<size_t()> callback = [shared, copies] { return shared->size() + copies.size(); };
-        if (owned && mi_is_in_heap_region(shared.get()) && callback() == text.size() + copies.size()) result |= 8;
+        // Exceed libc++'s stack formatting buffer and exercise asprintf_l on Mac.
+        std::ostringstream numbers;
+        numbers << std::fixed << std::setprecision(512) << 1.25;
+        const std::string formatted = numbers.str();
+        if (owned && mi_is_in_heap_region(shared.get()) && callback() == text.size() + copies.size() &&
+            formatted.size() == 514 && formatted.substr(0, 4) == "1.25" &&
+            formatted.find_first_not_of('0', 4) == std::string::npos &&
+            mi_is_in_heap_region(formatted.data())) result |= 8;
         if (juice_static_allocator_probe()) result |= 16;
         if (usrsctp_allocator_probe()) result |= 32;
         void* crypto = OPENSSL_malloc(4096);

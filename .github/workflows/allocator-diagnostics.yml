@@ -1,0 +1,87 @@
+name: Allocator diagnostics
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: allocator-diagnostics-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit allocations (${{ matrix.os }})
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-26, macos-15-intel, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: |
+          17
+          21
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+    - uses: gradle/actions/setup-gradle@v5
+    - name: Set up Windows native tools
+      if: runner.os == 'Windows'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        path-type: inherit
+        install: mingw-w64-x86_64-gcc mingw-w64-x86_64-make make perl
+    - name: Install pinned build tools
+      run: python -m pip install --only-binary=cmake -r tools/native-build-requirements.txt
+    - name: Trace native allocations during DTLS transfers
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        ./gradlew --no-daemon --max-workers=2 -PnativeAllocatorDiagnostics=true nativeAllocatorDiagnostics
+        python tools/test_allocator_audit.py
+        binary=build/dockcross/host/native/libdatachannel-java.so
+        if [[ "$RUNNER_OS" == macOS ]]; then binary=build/dockcross/host/native/libdatachannel-java.dylib; fi
+        python tools/audit_allocator_imports.py "$binary" --output build/reports/allocator-diagnostics/imports.json
+        ./gradlew --no-daemon --max-workers=2 test
+        python tools/audit_allocator_imports.py "$binary" --mode normal --output build/reports/allocator-diagnostics/normal-imports.json
+    - name: Trace Windows native allocations during DTLS transfers
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        CC: gcc
+        CXX: g++
+        CMAKE_GENERATOR: MinGW Makefiles
+      run: |
+        set -euo pipefail
+        export LIBDATACHANNEL_BASH="$(cygpath -m /usr/bin/bash.exe)"
+        ./gradlew --no-daemon --max-workers=2 -PnativeAllocatorDiagnostics=true nativeAllocatorDiagnostics
+        python tools/test_allocator_audit.py
+        binary=build/dockcross/host/native/libdatachannel-java.dll
+        python tools/audit_allocator_imports.py "$binary" --output build/reports/allocator-diagnostics/imports.json
+        ./gradlew --no-daemon --max-workers=2 test
+        python tools/audit_allocator_imports.py "$binary" --mode normal --output build/reports/allocator-diagnostics/normal-imports.json
+    - name: Save allocation counters, import audits and negative controls
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: allocator-diagnostics-${{ matrix.os }}
+        path: |
+          build/reports/allocator-diagnostics/
+          build/reports/tests/nativeAllocatorDiagnostics/
+          build/test-results/nativeAllocatorDiagnostics/
+        if-no-files-found: warn

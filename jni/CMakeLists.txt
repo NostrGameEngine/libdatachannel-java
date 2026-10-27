@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 11)
 option(PROJECT_VERSION "The version of the project" "unspecified")
 option(ENABLE_HARDENING "Enable compiler/linker hardening flags" ON)
 option(BUILD_JNI_TESTS "Build the private JVM thread attachment test probe" OFF)
+option(ALLOCATOR_DIAGNOSTICS "Instrument the private allocator for CI only" OFF)
 
 set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "Embed private OpenSSL in the binding" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -60,6 +61,10 @@ if(NOT ANDROID AND NOT LIBDATACHANNEL_JNI_IOS)
     if(APPLE)
         include(cmake/private_cxx_runtime.cmake)
     endif()
+endif()
+
+if(ALLOCATOR_DIAGNOSTICS AND (NOT LIBDATACHANNEL_PRIVATE_ALLOCATOR OR NOT BUILD_JNI_TESTS))
+    message(FATAL_ERROR "Allocator diagnostics require a desktop JNI test build")
 endif()
 
 set(NO_WEBSOCKET ON CACHE BOOL "configure libdatachannel build")
@@ -230,6 +235,13 @@ if(LIBDATACHANNEL_PRIVATE_ALLOCATOR)
         COMPILE_DEFINITIONS LIBDATACHANNEL_ALLOCATOR_IMPLEMENTATION=1)
     set_property(TARGET datachannel-java PROPERTY CXX_STANDARD 17)
     target_link_libraries(datachannel-java PRIVATE mimalloc-static OpenSSL::Crypto)
+    if(ALLOCATOR_DIAGNOSTICS)
+        # The adapter uses mimalloc's documented allocation/free tracking macros.
+        # No upstream source is changed and no process allocator is interposed.
+        target_compile_options(mimalloc-static PRIVATE
+            "-include${CMAKE_CURRENT_SOURCE_DIR}/tests/allocator_diagnostics_hooks.h")
+        target_sources(datachannel-java PRIVATE tests/allocator_diagnostics.c)
+    endif()
     if(APPLE)
         target_link_options(datachannel-java PRIVATE -nostdlib++)
         target_link_libraries(datachannel-java PRIVATE

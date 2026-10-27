@@ -141,6 +141,8 @@ def verify(path, architecture, selected_files=None):
         if metadata['id'] != '@rpath/' + name:
             raise ValueError('Noncanonical Mac install name: ' + name + ' -> ' + metadata['id'])
         for dependency in metadata['dependencies']:
+            if 'libc++' in dependency.rsplit('/', 1)[-1]:
+                raise ValueError('Desktop JNI must embed its C++ runtime: ' + dependency)
             if any(name in dependency.rsplit('/', 1)[-1].lower() for name in ('libssl', 'libcrypto', 'mimalloc')):
                 raise ValueError('OpenSSL and mimalloc must be private: ' + dependency)
             if dependency.startswith(('/usr/lib/', '/System/Library/Frameworks/')):

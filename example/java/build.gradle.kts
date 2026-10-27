@@ -13,14 +13,12 @@ dependencies {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(11)
+        languageVersion = JavaLanguageVersion.of(21)
     }
+}
 
-    testing {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(25)
-        }
-    }
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(11)
 }
 
 application {

@@ -48,12 +48,17 @@ class NativeLibraryLoadingTest {
     }
 
     private void assertPrivateDependencies(String order) throws Exception {
-        Path temp = Files.createDirectory(root.resolve("temp"));
-        String output = runProbe(temp, root, null, 0, Path.of(System.getProperty("native.test.jar")),
-                "-Dnative.test.foreign.dependencies=" + order,
-                "-Dnative.test.probe.path=" + System.getProperty("native.test.probe.path"),
-                "-Dnative.test.dependency.collision.path=" + System.getProperty("native.test.dependency.collision.path"));
-        assertTrue(output.contains("PRIVATE_DEPENDENCIES_OK"), output);
+        // Windows shutdown used to deadlock intermittently in DLL thread detach.
+        int repetitions = Platform.isWindows() ? 20 : 1;
+        for (int iteration = 0; iteration < repetitions; ++iteration) {
+            Path temp = Files.createTempDirectory(root, "temp-");
+            // Each of the three actual transfers has its own 30-second deadline.
+            String output = runProbe(temp, root, null, 0, Path.of(System.getProperty("native.test.jar")), 120,
+                    "-Dnative.test.foreign.dependencies=" + order,
+                    "-Dnative.test.probe.path=" + System.getProperty("native.test.probe.path"),
+                    "-Dnative.test.dependency.collision.path=" + System.getProperty("native.test.dependency.collision.path"));
+            assertTrue(output.contains("PRIVATE_DEPENDENCIES_OK"), output);
+        }
     }
 
     @Test
@@ -244,6 +249,11 @@ class NativeLibraryLoadingTest {
     }
 
     private String runProbe(Path temp, Path home, String classPathOverride, int expectedExit, Path nativeJar, String... vmOptions) throws Exception {
+        return runProbe(temp, home, classPathOverride, expectedExit, nativeJar, 30, vmOptions);
+    }
+
+    private String runProbe(Path temp, Path home, String classPathOverride, int expectedExit, Path nativeJar,
+                            int timeoutSeconds, String... vmOptions) throws Exception {
         // Gradle workers use their own classloader; construct the child classpath explicitly.
         List<String> classPath = new ArrayList<>();
         for (Class<?> type : List.of(LibDataChannel.class, Probe.class, NativeLoader.class, NativeDirectories.class,
@@ -267,13 +277,23 @@ class NativeLibraryLoadingTest {
         builder.environment().remove("LOCALAPPDATA");
         Process process = builder.start();
         try {
-            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Native loading probe timed out");
+            assertTrue(process.waitFor(timeoutSeconds, TimeUnit.SECONDS),
+                    () -> "Native loading probe timed out: " + readProbeLog(log));
             String output = Files.readString(log);
             assertEquals(expectedExit, process.exitValue(), output);
             if (expectedExit == 0) assertTrue(output.contains("NATIVE_OK"), output);
             return output;
         } finally {
             process.destroyForcibly();
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Native loading probe did not exit");
+        }
+    }
+
+    private static String readProbeLog(Path log) {
+        try {
+            return Files.readString(log);
+        } catch (java.io.IOException failure) {
+            return failure.toString();
         }
     }
 
@@ -283,7 +303,8 @@ class NativeLibraryLoadingTest {
 
         private static void checkForeignDependencies(long handle) {
             if (foreignDependencyCheck(handle, "foreign_crypto_self_check") != 0x7eed0001L
-                    || foreignDependencyCheck(handle, "foreign_allocator_self_check") != 0x7eed0002L) {
+                    || foreignDependencyCheck(handle, "foreign_allocator_self_check") != 0x7eed0002L
+                    || foreignDependencyCheck(handle, "foreign_cpp_allocator_self_check") != 0x7eed0003L) {
                 throw new IllegalStateException("Foreign dependency implementation was replaced");
             }
         }
@@ -328,8 +349,10 @@ class NativeLibraryLoadingTest {
                 // Repeated peer teardown exercises JNI allocation/free across callbacks
                 // while a global library owns the same OpenSSL and mimalloc names.
                 for (int cycle = 0; cycle < 3; ++cycle) {
+                    System.out.println("PRIVATE_DEPENDENCIES_CYCLE_START " + cycle);
                     new PeerConnectionBindAddressTest().explicitIpv4BindingTransfersOrderedBytesBothWays();
                     checkForeignDependencies(foreignLibrary);
+                    System.out.println("PRIVATE_DEPENDENCIES_CYCLE_OK " + cycle);
                 }
                 System.out.println("PRIVATE_DEPENDENCIES_OK " + dependencyOrder);
             }

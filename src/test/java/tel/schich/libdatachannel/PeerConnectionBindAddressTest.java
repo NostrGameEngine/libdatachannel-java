@@ -91,11 +91,15 @@ class PeerConnectionBindAddressTest {
 
     @Test
     void explicitIpv4BindingTransfersOrderedBytesBothWays() throws Exception {
+        transferOrderedBytesBothWays(MESSAGES, BYTES);
+    }
+
+    static void transferOrderedBytesBothWays(int messages, int bytesPerMessage) throws Exception {
         PeerConnectionConfiguration configuration = PeerConnectionConfiguration.DEFAULT
                 .withBindAddress(InetAddress.getByAddress(IPV4)).withDisableAutoNegotiation(true);
         assertTrue(configuration.iceServers().isEmpty());
         ArrayBlockingQueue<Signal> signals = new ArrayBlockingQueue<>(64);
-        ArrayBlockingQueue<byte[]> echo = new ArrayBlockingQueue<>(MESSAGES);
+        ArrayBlockingQueue<byte[]> echo = new ArrayBlockingQueue<>(messages);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicReference<DataChannel> receiver = new AtomicReference<>();
         AtomicInteger received = new AtomicInteger();
@@ -130,7 +134,7 @@ class PeerConnectionBindAddressTest {
                         failure.compareAndSet(null, new AssertionError(message)));
                 channel.onMessage.register(DataChannelCallback.Message.handleBinary((active, bytes) -> {
                     try {
-                        byte[] copy = checkMessage(bytes, received.get());
+                        byte[] copy = checkMessage(bytes, received.get(), messages, bytesPerMessage);
                         received.incrementAndGet();
                         assertTrue(echo.offer(copy), "Echo queue exceeded its bound");
                     } catch (Throwable problem) {
@@ -143,7 +147,7 @@ class PeerConnectionBindAddressTest {
                         failure.compareAndSet(null, new AssertionError(message)));
                 sender.onMessage.register(DataChannelCallback.Message.handleBinary((active, bytes) -> {
                     try {
-                        checkMessage(bytes, returned.get());
+                        checkMessage(bytes, returned.get(), messages, bytesPerMessage);
                         returned.incrementAndGet();
                     } catch (Throwable problem) {
                         failure.compareAndSet(null, problem);
@@ -151,7 +155,7 @@ class PeerConnectionBindAddressTest {
                 }));
                 left.setLocalDescription("offer");
                 boolean sent = false;
-                while (System.nanoTime() < deadline && returned.get() < MESSAGES) {
+                while (System.nanoTime() < deadline && returned.get() < messages) {
                     assertNull(failure.get(), "Native callback failed");
                     Signal signal;
                     while ((signal = signals.poll()) != null) {
@@ -170,8 +174,8 @@ class PeerConnectionBindAddressTest {
                         assertLoopback(left.remoteAddress());
                         assertLoopback(right.localAddress());
                         assertLoopback(right.remoteAddress());
-                        for (int index = 0; index < MESSAGES; index++) {
-                            sender.sendMessage(direct(payload(index)));
+                        for (int index = 0; index < messages; index++) {
+                            sender.sendMessage(direct(payload(index, bytesPerMessage)));
                         }
                         sent = true;
                     }
@@ -182,8 +186,8 @@ class PeerConnectionBindAddressTest {
                     Thread.sleep(2);
                 }
                 assertTrue(sent, "Explicitly bound native channel did not open within its bound");
-                assertEquals(MESSAGES, received.get());
-                assertEquals(MESSAGES, returned.get());
+                assertEquals(messages, received.get());
+                assertEquals(messages, returned.get());
                 assertTrue(descriptions.get() >= 2);
                 assertTrue(candidates.get() >= 2);
                 assertNull(failure.get());
@@ -203,21 +207,21 @@ class PeerConnectionBindAddressTest {
         assertTrue(endpoint.getPort() > 0);
     }
 
-    private static byte[] checkMessage(ByteBuffer bytes, int expectedIndex) {
-        assertEquals(BYTES, bytes.remaining());
-        byte[] copy = new byte[BYTES];
+    private static byte[] checkMessage(ByteBuffer bytes, int expectedIndex, int messages, int bytesPerMessage) {
+        assertEquals(bytesPerMessage, bytes.remaining());
+        byte[] copy = new byte[bytesPerMessage];
         bytes.duplicate().get(copy);
         int index = ByteBuffer.wrap(copy).order(ByteOrder.BIG_ENDIAN).getInt();
         assertEquals(expectedIndex, index, "Reliable ordered native delivery changed");
-        assertTrue(index < MESSAGES);
-        assertArrayEquals(payload(index), copy);
+        assertTrue(index < messages);
+        assertArrayEquals(payload(index, bytesPerMessage), copy);
         return copy;
     }
 
-    private static byte[] payload(int index) {
-        ByteBuffer bytes = ByteBuffer.allocate(BYTES).order(ByteOrder.BIG_ENDIAN);
+    private static byte[] payload(int index, int bytesPerMessage) {
+        ByteBuffer bytes = ByteBuffer.allocate(bytesPerMessage).order(ByteOrder.BIG_ENDIAN);
         bytes.putInt(index);
-        for (int position = 4; position < BYTES; position++) {
+        for (int position = 4; position < bytesPerMessage; position++) {
             bytes.put((byte) ((index * 31 + position * 17) ^ 0x5a));
         }
         return bytes.array();

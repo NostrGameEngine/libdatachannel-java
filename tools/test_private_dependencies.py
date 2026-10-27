@@ -86,12 +86,52 @@ class PrivateDependenciesTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("materialize common definitions", result.stderr)
 
-    def test_accepts_local_allocator_storage_in_static_ios_archive(self):
+    def test_accepts_local_storage_in_static_ios_archive(self):
         result = self.verify(
             "00000000 (__TEXT,__text) external _JNI_OnLoad\n"
-            "00000008 (__DATA,__bss) non-external __mi_numa_node_count\n",
+            "00000008 (__DATA,__bss) non-external _sctp_lock\n",
             "binding.a", "iOS")
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_rejects_even_local_mimalloc_in_ios(self):
+        result = self.verify(
+            "00000000 (__TEXT,__text) external _JNI_OnLoad\n"
+            "00000008 (__TEXT,__text) non-external _mi_malloc\n",
+            "binding.a", "iOS")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("platform allocator", result.stderr)
+
+    def test_rejects_shared_desktop_cpp_runtime(self):
+        result = self.verify("Dynamic Section:\n NEEDED libstdc++.so.6\n", "binding.so", "Linux")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("embed its C++ runtime", result.stderr)
+
+    def test_rejects_windows_crt_heap_imports(self):
+        for symbol in ("malloc", "calloc", "realloc", "free", "_strdup"):
+            result = self.verify("Import Tables:\n  00000000  0000 " + symbol + "\n")
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("resolve C heap requests", result.stderr)
+
+    def test_rejects_local_mimalloc_in_android(self):
+        result = self.verify("00000000 T JNI_OnLoad\n00000008 t mi_malloc\n", "binding.so", "Android")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("platform allocator", result.stderr)
+
+    def test_accepts_ios_platform_allocator_imports(self):
+        result = self.verify(
+            "00000000 (__TEXT,__text) external _JNI_OnLoad\n"
+            "                 (undefined) external _malloc\n"
+            "                 (undefined) external _free\n",
+            "binding.a", "iOS")
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_rejects_mimalloc_references_in_ios(self):
+        result = self.verify(
+            "00000000 (__TEXT,__text) external _JNI_OnLoad\n"
+            "                 (undefined) external _mi_malloc\n",
+            "binding.a", "iOS")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("platform allocator", result.stderr)
 
 
 if __name__ == "__main__":

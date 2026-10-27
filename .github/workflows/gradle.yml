@@ -2,13 +2,136 @@ name: Build
 
 on:
   push:
-    branches: [ '*' ]
+    branches: [ '**' ]
     tags: [ '*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
+  test-linux:
+    name: Test Linux JNI and packaging
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: |
+          17
+          21
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+    - uses: gradle/actions/setup-gradle@v5
+    - name: Install native tools
+      run: python -m pip install --only-binary=cmake -r tools/native-build-requirements.txt
+    - name: Build and test actual JNI
+      run: ./gradlew --no-daemon --max-workers=2 test packageNativeSources
+    - name: Check native validators and source packaging
+      run: |
+        python tools/test_macos_native.py
+        python tools/test_private_dependencies.py
+        python tools/test_package_native_sources.py
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: linux-jni-tests
+        path: |
+          build/reports/tests/
+          build/test-results/
+          build/source-archives/
+
+  build-android:
+    name: Build Android platform allocator
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: recursive
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: |
+          17
+          21
+    - uses: gradle/actions/setup-gradle@v5
+    - name: Build Android ARM64 JNI without mimalloc
+      run: ./gradlew --no-daemon --max-workers=2 :compileNativeForAndroidArm64V8a
+    - uses: actions/upload-artifact@v6
+      with:
+        name: libdatachannel-android-arm64
+        path: build/dockcross/android-arm64-v8a/native/libdatachannel-java.so
+        if-no-files-found: error
+
+  test-windows:
+    name: Test Windows JNI
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: |
+          17
+          21
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+    - uses: gradle/actions/setup-gradle@v5
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        path-type: inherit
+        install: mingw-w64-x86_64-gcc mingw-w64-x86_64-make make perl
+    - name: Install native tools
+      shell: pwsh
+      run: python -m pip install --only-binary=cmake -r tools/native-build-requirements.txt
+    - name: Build actual Windows JNI
+      shell: msys2 {0}
+      env:
+        CC: gcc
+        CXX: g++
+        CMAKE_GENERATOR: MinGW Makefiles
+      run: |
+        export LIBDATACHANNEL_BASH="$(cygpath -m /usr/bin/bash.exe)"
+        ./gradlew --no-daemon --max-workers=2 compileNativeForHost
+        for library in build/dockcross/host/native/*.dll; do
+          echo "$library"
+          objdump -p "$library" > "$library.imports.txt"
+          sed -n '/DLL Name:/p' "$library.imports.txt"
+        done
+        if sed -n '/The Import Tables/,/The Export Tables/p' build/dockcross/host/native/libdatachannel-java.dll.imports.txt | grep -E '[[:space:]]DllMain(@[0-9]+)?$'; then
+          echo '::error::JNI must own its DLL entry point instead of importing the allocator entry point'
+          exit 1
+        fi
+    - name: Test actual Windows JNI
+      shell: msys2 {0}
+      env:
+        CC: gcc
+        CXX: g++
+        CMAKE_GENERATOR: MinGW Makefiles
+      run: |
+        export LIBDATACHANNEL_BASH="$(cygpath -m /usr/bin/bash.exe)"
+        ./gradlew --no-daemon --max-workers=2 test
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: windows-jni-tests
+        path: |
+          build/reports/tests/
+          build/test-results/
+          build/dockcross/host/native/*.dll
+          build/dockcross/host/native/*.dll.imports.txt
+
   build-macos:
     name: Build macOS Native Libraries
     strategy:
@@ -77,7 +200,6 @@ jobs:
         name: libdatachannel-${{ matrix.classifier }}
         path: |
           build/dockcross/host/native/libdatachannel-java.dylib
-          build/dockcross/host/native/libdatachannel_mimalloc*.dylib
         retention-days: 30
         if-no-files-found: error
 
@@ -85,6 +207,9 @@ jobs:
     needs:
     - build-macos
     - build-ios
+    - build-android
+    - test-linux
+    - test-windows
     runs-on: ubuntu-latest
     environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') ) && 'sonatype-central' || null }}
     steps:
@@ -129,7 +254,7 @@ jobs:
           -Plibdatachannel.macos-x86_64.prebuilt-path=artifacts/macos-x86_64/libdatachannel-java.dylib
           -Plibdatachannel.ios.prebuilt-path=artifacts/ios
         )
-        ./gradlew --no-configuration-cache :githubActions "${prebuilts[@]}"
+        ./gradlew --no-configuration-cache :githubActions :packageNativeForMacosArm64 :packageNativeForMacosX8664 :packageNativeForIos "${prebuilts[@]}"
       env:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

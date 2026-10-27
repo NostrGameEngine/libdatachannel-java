@@ -76,6 +76,11 @@ class MacosClosureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Missing public JNI'):
             verify(self.path, 'arm64')
 
+    def test_shared_cpp_runtime_refuses(self):
+        self.put(dependencies=['/usr/lib/libc++.1.dylib'])
+        with self.assertRaisesRegex(ValueError, 'embed its C\\+\\+ runtime'):
+            verify(self.path, 'arm64')
+
     def test_missing_jni_refuses(self):
         with self.assertRaisesRegex(ValueError, 'Missing required Mac JNI'):
             verify(self.path, 'arm64')
